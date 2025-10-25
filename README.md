@@ -1,8 +1,7 @@
 # 🌿 RedLeaf CMS
 
-> A lightweight, blazing-fast CMS built with Rust — for creators who value simplicity, performance, and freedom.
+A lightweight, blazing-fast CMS built with Rust — for creators who value simplicity, performance, and freedom.
 
----
 
 ## 🚀 About
 
@@ -15,7 +14,6 @@ Built from the ground up to be:
 - 🧱 **Extensible** — plugin & theme support
 - 🌐 **Headless Ready** — API-first architecture
 
----
 
 ## 🏗️ Project Goals
 
@@ -26,7 +24,6 @@ Built from the ground up to be:
 | 3️⃣ | Theme & plugin system |
 | 4️⃣ | GUI installer & Docker distribution |
 
----
 
 ## 🔧 Tech Stack
 
@@ -36,7 +33,6 @@ Built from the ground up to be:
 - **Template Engine**: [Askama](https://github.com/djc/askama)
 - **Auth**: JWT + Argon2 password hashing
 
----
 
 ## 🧩 Directory Structure
 
