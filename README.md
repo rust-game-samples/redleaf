@@ -36,4 +36,44 @@ Built from the ground up to be:
 
 ## 🧩 Directory Structure
 
+```
+redleaf/
+├─ src/
+│ ├─ main.rs
+│ ├─ routes/
+│ ├─ models/
+│ ├─ templates/
+│ └─ db.rs
+├─ static/
+├─ migrations/
+└─ Cargo.toml
+```
 
+## ⚙️ Quick Start
+
+```bash
+git clone https://github.com/yourname/redleaf.git
+cd redleaf
+cargo run
+```
+
+Then open http://localhost:3000
+
+🧱 Roadmap
+
+- [ ] Post CRUD
+- [ ] Markdown rendering
+- [ ] Theme support
+- [ ] API mode (Headless CMS)
+- [ ] Admin Web UI
+- [ ] Docker / Binary Installer
+
+## 🪄 Philosophy
+
+“RedLeaf — grows naturally, powered by Rust.”
+
+Every page is a leaf.
+Every site is a tree.
+And Rust is the root that keeps it strong.
+
+## 📜 License
