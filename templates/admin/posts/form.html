@@ -25,6 +25,25 @@
       <input type="text" id="excerpt" name="excerpt" value="{{ excerpt }}" placeholder="Brief summary (optional)">
     </div>
     <div class="form-group">
+      <label for="category_id">Category</label>
+      <select id="category_id" name="category_id" style="width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-family:inherit;font-size:.95rem;background:white;">
+        <option value="">— None —</option>
+        {% for cat in categories %}
+        <option value="{{ cat.id }}"
+          {% if let Some(sel_id) = selected_category_id %}
+            {% if *sel_id == cat.id %}selected{% endif %}
+          {% endif %}
+        >{{ cat.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="tags">Tags</label>
+      <input type="text" id="tags" name="tags" value="{{ tag_names }}"
+             placeholder="Comma-separated, e.g. rust, web, tutorial">
+      <small style="color:#6b7280;display:block;margin-top:.3rem;">Tags are created automatically if they don't exist.</small>
+    </div>
+    <div class="form-group">
       <label for="content">Content (Markdown) <span style="color:#dc2626">*</span></label>
       <textarea id="content" name="content" class="content-field" required>{{ content }}</textarea>
     </div>

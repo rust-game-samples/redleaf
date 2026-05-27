@@ -12,11 +12,13 @@ pub mod admin;
 pub mod api;
 pub mod auth;
 pub mod posts;
+pub mod taxonomy;
 
 pub use admin::admin_login_routes;
 pub use admin::admin_routes;
 pub use auth::auth_routes;
 pub use posts::post_routes;
+pub use taxonomy::taxonomy_routes;
 
 #[derive(Template)]
 #[template(path = "index.html")]

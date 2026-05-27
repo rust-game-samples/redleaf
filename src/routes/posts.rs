@@ -1,8 +1,7 @@
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
+    response::Response,
     routing::get,
     Router,
 };
@@ -11,7 +10,7 @@ use serde::Deserialize;
 use crate::{
     db::DbPool,
     errors::AppError,
-    models::{Post, PostWithAuthor, Setting},
+    models::{Post, PostWithAuthor, Setting, Tag},
     util::{render, Pagination, PER_PAGE},
 };
 
@@ -28,6 +27,7 @@ struct PostListTemplate {
 struct PostShowTemplate {
     post: PostWithAuthor,
     html_content: String,
+    tags: Vec<Tag>,
 }
 
 #[derive(Deserialize, Default)]
@@ -73,8 +73,9 @@ async fn show_post(
     };
 
     let post = post.ok_or(AppError::NotFound)?;
+    let tags = Tag::find_by_post(&pool, post.id).await?;
     let html_content = markdown_to_html(&post.content);
-    render(PostShowTemplate { post, html_content })
+    render(PostShowTemplate { post, html_content, tags })
 }
 
 fn markdown_to_html(markdown: &str) -> String {

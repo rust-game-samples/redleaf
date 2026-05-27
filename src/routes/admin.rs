@@ -13,9 +13,10 @@ use crate::{
     db::DbPool,
     errors::AppError,
     models::{
-        Post,
-        PostWithAuthor,
+        Category, CategoryWithCount,
+        Post, PostWithAuthor,
         Setting,
+        Tag, TagWithCount,
         post::{CreatePost, UpdatePost},
         user::{CreateUser, LoginUser},
         User,
@@ -48,6 +49,32 @@ struct SettingsTemplate {
     saved: Option<String>,
 }
 
+// ─── Category templates ───────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/categories/list.html")]
+struct CategoryListTemplate {
+    categories: Vec<CategoryWithCount>,
+}
+
+#[derive(Template)]
+#[template(path = "admin/categories/form.html")]
+struct CategoryFormTemplate {
+    heading: String,
+    action: String,
+    name: String,
+    slug: String,
+    error: Option<String>,
+}
+
+// ─── Tag templates ────────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/tags/list.html")]
+struct TagListTemplate {
+    tags: Vec<TagWithCount>,
+}
+
 // ─── Template structs ────────────────────────────────────────────────────────
 
 #[derive(Template)]
@@ -76,6 +103,9 @@ struct PostFormTemplate {
     excerpt: String,
     published: bool,
     error: Option<String>,
+    categories: Vec<Category>,
+    selected_category_id: Option<i64>,
+    tag_names: String,
 }
 
 impl PostFormTemplate {
@@ -89,6 +119,9 @@ impl PostFormTemplate {
             excerpt: String::new(),
             published: false,
             error: None,
+            categories: vec![],
+            selected_category_id: None,
+            tag_names: String::new(),
         }
     }
 
@@ -102,6 +135,9 @@ impl PostFormTemplate {
             excerpt: post.excerpt.clone().unwrap_or_default(),
             published: post.published,
             error: None,
+            categories: vec![],
+            selected_category_id: post.category_id,
+            tag_names: String::new(),
         }
     }
 }
@@ -120,6 +156,14 @@ struct PostForm {
     content: String,
     excerpt: Option<String>,
     published: Option<String>,
+    category_id: Option<i64>,
+    tags: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CategoryForm {
+    name: String,
+    slug: Option<String>,
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -140,6 +184,13 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/posts/{id}/edit", get(edit_post_form))
         .route("/posts/{id}/delete", post(delete_post))
         .route("/posts/{id}/toggle", post(toggle_published))
+        .route("/categories", get(list_categories).post(create_category))
+        .route("/categories/new", get(new_category_form))
+        .route("/categories/{id}/edit", get(edit_category_form))
+        .route("/categories/{id}", post(update_category))
+        .route("/categories/{id}/delete", post(delete_category))
+        .route("/tags", get(list_tags))
+        .route("/tags/{id}/delete", post(delete_tag))
         .route("/settings", get(settings_page).post(settings_save))
 }
 
@@ -240,6 +291,16 @@ async fn register_submit(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+async fn resolve_tags(pool: &DbPool, input: Option<&str>) -> Result<Vec<i64>, AppError> {
+    let Some(s) = input else { return Ok(vec![]) };
+    let mut ids = Vec::new();
+    for name in s.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        let tag = Tag::find_or_create(pool, name).await?;
+        ids.push(tag.id);
+    }
+    Ok(ids)
+}
+
 fn form_to_create(form: PostForm) -> CreatePost {
     let slug = if form.slug.trim().is_empty() {
         slugify(&form.title)
@@ -253,6 +314,7 @@ fn form_to_create(form: PostForm) -> CreatePost {
         excerpt: form.excerpt.filter(|s| !s.trim().is_empty()),
         published: form.published.is_some(),
         author_id: None,
+        category_id: form.category_id,
     }
 }
 
@@ -282,8 +344,11 @@ async fn list_posts(
     render(PostListTemplate { posts: posts?, paging })
 }
 
-async fn new_post_form() -> Result<Response, AppError> {
-    render(PostFormTemplate::new("/admin/posts", "New Post"))
+async fn new_post_form(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let categories = Category::find_all(&pool).await?;
+    let mut tmpl = PostFormTemplate::new("/admin/posts", "New Post");
+    tmpl.categories = categories;
+    render(tmpl)
 }
 
 async fn create_post(
@@ -291,19 +356,26 @@ async fn create_post(
     Extension(claims): Extension<Claims>,
     Form(form): Form<PostForm>,
 ) -> Result<Response, AppError> {
+    let tag_input = form.tags.clone();
     let mut payload = form_to_create(form);
     payload.author_id = Some(claims.sub);
 
     match Post::create(&pool, payload).await {
-        Ok(_) => Ok(Redirect::to("/admin/posts").into_response()),
+        Ok(post) => {
+            let tag_ids = resolve_tags(&pool, tag_input.as_deref()).await?;
+            Post::set_tags(&pool, post.id, &tag_ids).await?;
+            Ok(Redirect::to("/admin/posts").into_response())
+        }
         Err(e) => {
             let msg = if e.to_string().contains("UNIQUE constraint failed") {
                 "Slug already exists. Please choose a different slug.".to_string()
             } else {
                 return Err(AppError::Database(e));
             };
+            let categories = Category::find_all(&pool).await?;
             let mut tmpl = PostFormTemplate::new("/admin/posts", "New Post");
             tmpl.error = Some(msg);
+            tmpl.categories = categories;
             render(tmpl)
         }
     }
@@ -313,8 +385,17 @@ async fn edit_post_form(
     State(pool): State<DbPool>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    let post = Post::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
-    render(PostFormTemplate::from_post(&post))
+    let (post_res, categories) = tokio::join!(
+        Post::find_by_id(&pool, id),
+        Category::find_all(&pool),
+    );
+    let post = post_res?.ok_or(AppError::NotFound)?;
+    let tags = Tag::find_by_post(&pool, id).await?;
+    let tag_names = tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", ");
+    let mut tmpl = PostFormTemplate::from_post(&post);
+    tmpl.categories = categories?;
+    tmpl.tag_names = tag_names;
+    render(tmpl)
 }
 
 async fn update_post(
@@ -334,12 +415,15 @@ async fn update_post(
         content: Some(form.content),
         excerpt: Some(form.excerpt.filter(|s| !s.trim().is_empty())),
         published: Some(form.published.is_some()),
+        category_id: Some(form.category_id),
     };
 
-    Post::update(&pool, id, payload).await.map_err(|e| match e {
+    let post = Post::update(&pool, id, payload).await.map_err(|e| match e {
         sqlx::Error::RowNotFound => AppError::NotFound,
         other => AppError::Database(other),
     })?;
+    let tag_ids = resolve_tags(&pool, form.tags.as_deref()).await?;
+    Post::set_tags(&pool, post.id, &tag_ids).await?;
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
@@ -362,9 +446,121 @@ async fn toggle_published(
         content: None,
         excerpt: None,
         published: Some(!post.published),
+        category_id: None,
     };
     Post::update(&pool, id, payload).await?;
     Ok(Redirect::to("/admin/posts").into_response())
+}
+
+// ─── Category handlers ────────────────────────────────────────────────────────
+
+async fn list_categories(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let categories = Category::find_all_with_count(&pool).await?;
+    render(CategoryListTemplate { categories })
+}
+
+async fn new_category_form() -> Result<Response, AppError> {
+    render(CategoryFormTemplate {
+        heading: "New Category".into(),
+        action: "/admin/categories".into(),
+        name: String::new(),
+        slug: String::new(),
+        error: None,
+    })
+}
+
+async fn create_category(
+    State(pool): State<DbPool>,
+    Form(form): Form<CategoryForm>,
+) -> Result<Response, AppError> {
+    let slug = if form.slug.as_deref().unwrap_or("").trim().is_empty() {
+        slugify(&form.name)
+    } else {
+        form.slug.unwrap().trim().to_string()
+    };
+    match Category::create(&pool, &form.name, &slug).await {
+        Ok(_) => Ok(Redirect::to("/admin/categories").into_response()),
+        Err(e) => {
+            let msg = if e.to_string().contains("UNIQUE constraint failed") {
+                "Name or slug already exists.".to_string()
+            } else {
+                return Err(AppError::Database(e));
+            };
+            render(CategoryFormTemplate {
+                heading: "New Category".into(),
+                action: "/admin/categories".into(),
+                name: form.name,
+                slug,
+                error: Some(msg),
+            })
+        }
+    }
+}
+
+async fn edit_category_form(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let cat = Category::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    render(CategoryFormTemplate {
+        heading: "Edit Category".into(),
+        action: format!("/admin/categories/{}", id),
+        name: cat.name,
+        slug: cat.slug,
+        error: None,
+    })
+}
+
+async fn update_category(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+    Form(form): Form<CategoryForm>,
+) -> Result<Response, AppError> {
+    let slug = if form.slug.as_deref().unwrap_or("").trim().is_empty() {
+        slugify(&form.name)
+    } else {
+        form.slug.unwrap().trim().to_string()
+    };
+    match Category::update(&pool, id, &form.name, &slug).await {
+        Ok(_) => Ok(Redirect::to("/admin/categories").into_response()),
+        Err(e) => {
+            let msg = if e.to_string().contains("UNIQUE constraint failed") {
+                "Name or slug already exists.".to_string()
+            } else {
+                return Err(AppError::Database(e));
+            };
+            render(CategoryFormTemplate {
+                heading: "Edit Category".into(),
+                action: format!("/admin/categories/{}", id),
+                name: form.name,
+                slug,
+                error: Some(msg),
+            })
+        }
+    }
+}
+
+async fn delete_category(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Category::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/categories").into_response())
+}
+
+// ─── Tag handlers ─────────────────────────────────────────────────────────────
+
+async fn list_tags(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let tags = Tag::find_all_with_count(&pool).await?;
+    render(TagListTemplate { tags })
+}
+
+async fn delete_tag(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Tag::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/tags").into_response())
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

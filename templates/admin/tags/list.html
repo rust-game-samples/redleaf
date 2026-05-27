@@ -1,0 +1,47 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Tags{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Tags</h1>
+</div>
+<p style="color:#6b7280;margin-bottom:1.5rem;">Tags are created automatically when you add them to posts.</p>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Slug</th>
+        <th>Posts</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if tags.is_empty() %}
+      <tr>
+        <td colspan="5" class="empty">No tags yet. Add tags when creating or editing posts.</td>
+      </tr>
+      {% else %}
+      {% for tag in tags %}
+      <tr>
+        <td style="color:#9ca3af;font-size:.85rem">{{ tag.id }}</td>
+        <td><strong>{{ tag.name }}</strong></td>
+        <td style="color:#6b7280;font-size:.85rem">{{ tag.slug }}</td>
+        <td style="font-size:.85rem">{{ tag.post_count }}</td>
+        <td>
+          <div class="acts">
+            <form method="post" action="/admin/tags/{{ tag.id }}/delete"
+                  onsubmit="return confirm('Delete tag \'{{ tag.name }}\'?')">
+              <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

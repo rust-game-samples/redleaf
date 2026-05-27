@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ heading }}</h1>
+  <a href="/admin/categories" class="btn btn-secondary">← Back to Categories</a>
+</div>
+<div class="card">
+  {% if let Some(err) = &error %}
+  <div class="alert-error">{{ err }}</div>
+  {% endif %}
+  <form method="post" action="{{ action }}">
+    <div class="form-group">
+      <label for="name">Name <span style="color:#dc2626">*</span></label>
+      <input type="text" id="name" name="name" value="{{ name }}" required autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label for="slug">Slug <span style="color:#dc2626">*</span></label>
+      <input type="text" id="slug" name="slug" value="{{ slug }}" autocomplete="off"
+             placeholder="Leave blank to auto-generate">
+    </div>
+    <button type="submit" class="btn btn-primary">Save Category</button>
+  </form>
+</div>
+<script>
+  const nameEl = document.getElementById('name');
+  const slugEl = document.getElementById('slug');
+  let slugEdited = slugEl.value.length > 0;
+  slugEl.addEventListener('input', () => { slugEdited = true; });
+  nameEl.addEventListener('input', () => {
+    if (!slugEdited) {
+      slugEl.value = nameEl.value.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+    }
+  });
+</script>
+{% endblock %}

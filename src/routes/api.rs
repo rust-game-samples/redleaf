@@ -3,7 +3,7 @@ use axum::{
     extract::{Extension, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
 
@@ -132,6 +132,7 @@ async fn create_post(
         excerpt: body.excerpt.filter(|s| !s.trim().is_empty()),
         published: body.published.unwrap_or(false),
         author_id: Some(claims.sub),
+        category_id: None,
     };
 
     let post = Post::create(&pool, payload).await.map_err(|e| {
@@ -154,6 +155,7 @@ async fn update_post(
             if s.trim().is_empty() { None } else { Some(s) }
         }),
         published: body.published,
+        category_id: None,
     };
 
     let post = Post::update(&pool, id, payload).await.map_err(|e| match e {

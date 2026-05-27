@@ -19,6 +19,7 @@ pub fn build_app(pool: db::DbPool) -> Router {
     Router::new()
         .route("/", get(routes::index))
         .nest("/posts", routes::post_routes())
+        .merge(routes::taxonomy_routes())
         .nest("/admin", protected_admin)
         .merge(routes::admin_login_routes())
         .nest("/auth", routes::auth_routes())

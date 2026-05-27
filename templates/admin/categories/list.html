@@ -1,0 +1,48 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Categories{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Categories</h1>
+  <a href="/admin/categories/new" class="btn btn-primary">New Category</a>
+</div>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Slug</th>
+        <th>Posts</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if categories.is_empty() %}
+      <tr>
+        <td colspan="5" class="empty">No categories yet. <a href="/admin/categories/new">Create one!</a></td>
+      </tr>
+      {% else %}
+      {% for cat in categories %}
+      <tr>
+        <td style="color:#9ca3af;font-size:.85rem">{{ cat.id }}</td>
+        <td><strong>{{ cat.name }}</strong></td>
+        <td style="color:#6b7280;font-size:.85rem">{{ cat.slug }}</td>
+        <td style="font-size:.85rem">{{ cat.post_count }}</td>
+        <td>
+          <div class="acts">
+            <a href="/admin/categories/{{ cat.id }}/edit" class="btn btn-secondary">Edit</a>
+            <form method="post" action="/admin/categories/{{ cat.id }}/delete"
+                  onsubmit="return confirm('Delete this category? Posts will be uncategorized.')">
+              <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
