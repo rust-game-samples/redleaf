@@ -65,13 +65,14 @@
 
 #### 管理画面 CRUD
 
-- [ ] `GET  /admin/posts` — 投稿一覧（全ステータス）
-- [ ] `GET  /admin/posts/new` — 投稿作成フォーム
-- [ ] `POST /admin/posts` — 投稿作成処理
-- [ ] `GET  /admin/posts/{id}/edit` — 投稿編集フォーム
-- [ ] `PUT  /admin/posts/{id}` — 投稿更新処理
-- [ ] `DELETE /admin/posts/{id}` — 投稿削除処理
-- [ ] 投稿の公開・非公開切り替えボタン
+- [x] `GET  /admin/posts` — 投稿一覧（全ステータス・公開/下書きバッジ付き）
+- [x] `GET  /admin/posts/new` — 投稿作成フォーム（スラッグ自動生成 JS 付き）
+- [x] `POST /admin/posts` — 投稿作成処理（303 リダイレクト）
+- [x] `GET  /admin/posts/{id}/edit` — 投稿編集フォーム（既存値プリフィル）
+- [x] `POST /admin/posts/{id}` — 投稿更新処理
+- [x] `POST /admin/posts/{id}/delete` — 投稿削除処理（確認ダイアログ付き）
+- [x] `POST /admin/posts/{id}/toggle` — 公開/下書き切り替え
+- [x] ダッシュボードに投稿数統計（Total / Published / Drafts）
 
 #### テンプレート移行
 

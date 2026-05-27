@@ -30,18 +30,24 @@ pub struct UpdatePost {
     pub title: Option<String>,
     pub slug: Option<String>,
     pub content: Option<String>,
-    pub excerpt: Option<String>,
+    /// None = keep existing, Some(None) = clear, Some(Some(s)) = set
+    pub excerpt: Option<Option<String>>,
     pub published: Option<bool>,
 }
 
 impl Post {
-    // Find all posts
     pub async fn find_all(pool: &DbPool) -> Result<Vec<Post>, sqlx::Error> {
         sqlx::query_as::<_, Post>(
-            "SELECT * FROM posts WHERE published = 1 ORDER BY created_at DESC"
+            "SELECT * FROM posts WHERE published = 1 ORDER BY created_at DESC",
         )
         .fetch_all(pool)
         .await
+    }
+
+    pub async fn find_all_admin(pool: &DbPool) -> Result<Vec<Post>, sqlx::Error> {
+        sqlx::query_as::<_, Post>("SELECT * FROM posts ORDER BY created_at DESC")
+            .fetch_all(pool)
+            .await
     }
 
     // Find post by ID
@@ -115,7 +121,10 @@ impl Post {
         .bind(update_post.title.unwrap_or(current_post.title))
         .bind(update_post.slug.unwrap_or(current_post.slug))
         .bind(update_post.content.unwrap_or(current_post.content))
-        .bind(update_post.excerpt.or(current_post.excerpt))
+        .bind(match update_post.excerpt {
+            None => current_post.excerpt,
+            Some(v) => v,
+        })
         .bind(update_post.published.unwrap_or(current_post.published))
         .bind(now)
         .bind(id)
