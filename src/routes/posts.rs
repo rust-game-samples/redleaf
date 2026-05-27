@@ -55,11 +55,14 @@ async fn show_post(State(pool): State<DbPool>, Path(id): Path<i64>) -> Response 
 fn markdown_to_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
 
+    // Normalize CRLF (from HTML forms) to LF
+    let normalized = markdown.replace("\r\n", "\n");
+
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
-    let parser = Parser::new_ext(markdown, options);
+    let parser = Parser::new_ext(&normalized, options);
     let mut output = String::new();
     html::push_html(&mut output, parser);
     output

@@ -16,7 +16,7 @@ async fn admin_routes_require_auth() {
         } else {
             common::post_form(&app, uri, &[], None).await
         };
-        assert_eq!(status, 401, "{method} {uri} should require auth");
+        assert_eq!(status, 303, "{method} {uri} should redirect to login");
     }
 }
 

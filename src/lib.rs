@@ -16,6 +16,7 @@ pub fn build_app(pool: db::DbPool) -> Router {
         .route("/", get(routes::index))
         .nest("/posts", routes::post_routes())
         .nest("/admin", protected_admin)
+        .merge(routes::admin_login_routes())
         .nest("/auth", routes::auth_routes())
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())

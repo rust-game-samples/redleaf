@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
     extract::{Form, Path, State},
-    http::StatusCode,
+    http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Router,
@@ -9,13 +9,24 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
+    auth::generate_token,
     db::DbPool,
     models::{
-        post::{CreatePost, UpdatePost},
         Post,
+        post::{CreatePost, UpdatePost},
+        user::LoginUser,
+        User,
     },
     util::render,
 };
+
+// ─── Login template ──────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/login.html")]
+struct LoginTemplate {
+    error: Option<String>,
+}
 
 // ─── Template structs ────────────────────────────────────────────────────────
 
@@ -87,6 +98,12 @@ struct PostForm {
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
+pub fn admin_login_routes() -> Router<DbPool> {
+    Router::new()
+        .route("/admin/login", get(login_page).post(login_submit))
+        .route("/admin/logout", post(logout))
+}
+
 pub fn admin_routes() -> Router<DbPool> {
     Router::new()
         .route("/", get(dashboard))
@@ -96,6 +113,62 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/posts/{id}/edit", get(edit_post_form))
         .route("/posts/{id}/delete", post(delete_post))
         .route("/posts/{id}/toggle", post(toggle_published))
+}
+
+// ─── Login / logout handlers ─────────────────────────────────────────────────
+
+async fn login_page() -> Response {
+    render(LoginTemplate { error: None })
+}
+
+async fn login_submit(State(pool): State<DbPool>, Form(payload): Form<LoginUser>) -> Response {
+    let user = match User::authenticate(&pool, payload).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return render(LoginTemplate {
+                error: Some("Invalid email or password.".to_string()),
+            })
+        }
+        Err(e) => {
+            tracing::error!("Authentication error: {}", e);
+            return render(LoginTemplate {
+                error: Some("Internal error. Please try again.".to_string()),
+            });
+        }
+    };
+
+    let token = match generate_token(&user) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("Token generation failed: {}", e);
+            return render(LoginTemplate {
+                error: Some("Internal error. Please try again.".to_string()),
+            });
+        }
+    };
+
+    let cookie = format!(
+        "session={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=604800",
+        token
+    );
+    Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, "/admin")
+        .header(header::SET_COOKIE, cookie)
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+async fn logout() -> Response {
+    Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, "/admin/login")
+        .header(
+            header::SET_COOKIE,
+            "session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0",
+        )
+        .body(axum::body::Body::empty())
+        .unwrap()
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
