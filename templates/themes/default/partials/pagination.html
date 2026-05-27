@@ -1,0 +1,15 @@
+{% if paging.total_pages > 1 %}
+<nav class="pagination">
+  {% if paging.has_prev %}
+  <a href="{{ paging.base_url }}?page={{ paging.prev_page }}" class="pag-btn">← Previous</a>
+  {% else %}
+  <span class="pag-btn disabled">← Previous</span>
+  {% endif %}
+  <span class="pag-info">Page {{ paging.current_page }} of {{ paging.total_pages }}</span>
+  {% if paging.has_next %}
+  <a href="{{ paging.base_url }}?page={{ paging.next_page }}" class="pag-btn">Next →</a>
+  {% else %}
+  <span class="pag-btn disabled">Next →</span>
+  {% endif %}
+</nav>
+{% endif %}

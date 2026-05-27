@@ -10,12 +10,13 @@ use serde::Deserialize;
 use crate::{
     db::DbPool,
     errors::AppError,
+    filters,
     models::{Category, Post, PostWithAuthor, Tag},
     util::{render, Pagination, PER_PAGE},
 };
 
 #[derive(Template)]
-#[template(path = "taxonomy/category.html")]
+#[template(path = "themes/default/taxonomy/category.html")]
 struct CategoryPageTemplate {
     category: Category,
     posts: Vec<PostWithAuthor>,
@@ -23,7 +24,7 @@ struct CategoryPageTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "taxonomy/tag.html")]
+#[template(path = "themes/default/taxonomy/tag.html")]
 struct TagPageTemplate {
     tag: Tag,
     posts: Vec<PostWithAuthor>,

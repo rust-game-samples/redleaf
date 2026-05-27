@@ -48,4 +48,12 @@ impl Setting {
     pub async fn logo_url(pool: &DbPool) -> String {
         Self::get(pool, "logo_url").await.unwrap_or_default()
     }
+
+    /// Active theme name. Defaults to "default".
+    /// Currently informational only — actual template selection is compile-time.
+    pub async fn active_theme(pool: &DbPool) -> String {
+        Self::get(pool, "active_theme")
+            .await
+            .unwrap_or_else(|| "default".into())
+    }
 }

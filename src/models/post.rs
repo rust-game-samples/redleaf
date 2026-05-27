@@ -245,10 +245,12 @@ impl Post {
             SELECT p.*,
                 u.username AS author_username,
                 c.name     AS category_name,
-                c.slug     AS category_slug
+                c.slug     AS category_slug,
+                m.url      AS featured_image_url
             FROM posts p
             LEFT JOIN users      u ON u.id = p.author_id
             JOIN      categories c ON c.id = p.category_id
+            LEFT JOIN media      m ON m.id = p.featured_image_id
             WHERE p.published = 1 AND c.slug = ?
             ORDER BY p.created_at DESC
             LIMIT ? OFFSET ?
@@ -289,10 +291,12 @@ impl Post {
             SELECT p.*,
                 u.username AS author_username,
                 c.name     AS category_name,
-                c.slug     AS category_slug
+                c.slug     AS category_slug,
+                m.url      AS featured_image_url
             FROM posts p
             LEFT JOIN users      u  ON u.id  = p.author_id
             LEFT JOIN categories c  ON c.id  = p.category_id
+            LEFT JOIN media      m  ON m.id  = p.featured_image_id
             JOIN      post_tags  pt ON pt.post_id = p.id
             JOIN      tags       t  ON t.id  = pt.tag_id
             WHERE p.published = 1 AND t.slug = ?

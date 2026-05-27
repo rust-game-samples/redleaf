@@ -2,7 +2,7 @@ use askama::Template;
 use axum::{
     extract::{Form, Path, Query, State},
     http::{StatusCode, header},
-    response::{IntoResponse, Redirect, Response},
+    response::{Html, IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
 
@@ -10,6 +10,7 @@ use crate::{
     auth::generate_token,
     db::DbPool,
     errors::AppError,
+    filters,
     models::{Page, Post, PostWithAuthor, Setting, User, user::CreateUser},
     util::{build_fts_query, render},
 };
@@ -29,7 +30,7 @@ pub use taxonomy::taxonomy_routes;
 // ─── Templates ───────────────────────────────────────────────────────────────
 
 #[derive(Template)]
-#[template(path = "index.html")]
+#[template(path = "themes/default/home.html")]
 struct IndexTemplate {
     posts: Vec<PostWithAuthor>,
     post_url_type: String,
@@ -39,7 +40,7 @@ struct IndexTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "search.html")]
+#[template(path = "themes/default/search.html")]
 struct SearchTemplate {
     query: String,
     posts: Vec<Post>,
@@ -110,7 +111,7 @@ pub async fn search_page(
 // ─── Static page ──────────────────────────────────────────────────────────────
 
 #[derive(Template)]
-#[template(path = "pages/show.html")]
+#[template(path = "themes/default/page.html")]
 struct PageShowTemplate {
     page: Page,
     site_name: String,
@@ -170,4 +171,20 @@ pub async fn setup_submit(
         .header(header::SET_COOKIE, cookie)
         .body(axum::body::Body::empty())
         .unwrap())
+}
+
+// ─── 404 fallback ─────────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "themes/default/404.html")]
+struct NotFoundTemplate {
+    site_name: String,
+}
+
+pub async fn not_found_handler(State(pool): State<DbPool>) -> impl IntoResponse {
+    let site_name = Setting::site_name(&pool).await;
+    match (NotFoundTemplate { site_name }).render() {
+        Ok(html) => (StatusCode::NOT_FOUND, Html(html)).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
 }

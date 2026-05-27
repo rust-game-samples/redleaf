@@ -95,10 +95,10 @@ WordPress に近づけるための機能追加タスク。
 
 ### テンプレート階層 (Template Hierarchy)
 
-- [ ] テーマディレクトリ構造の設計（`themes/{name}/` 以下）
-- [ ] `single.html` (個別投稿) / `page.html` (固定ページ) / `archive.html` (一覧) / `404.html` の自動選択
-- [ ] `get_template_part("partials/header")` 相当のテンプレートインクルード
-- [ ] アクティブテーマを設定で切り替え可能に
+- [x] テーマディレクトリ構造の設計（`templates/themes/default/` 以下）
+- [x] `single.html` / `archive.html` / `page.html` / `home.html` / `404.html` の WordPress 命名規則テンプレート（ルートハンドラで自動選択）
+- [x] `{% include "themes/default/partials/pagination.html" %}` — `get_template_part` 相当のテンプレートインクルード
+- [x] `active_theme` 設定（DB 保存・管理画面設定可能。ランタイム切り替えは将来の Tera 対応時に実装）
 
 ### ウィジェットエリア
 

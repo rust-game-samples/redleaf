@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Template)]
-#[template(path = "posts/list.html")]
+#[template(path = "themes/default/archive.html")]
 struct PostListTemplate {
     posts: Vec<Post>,
     post_url_type: String,
@@ -46,7 +46,7 @@ impl PostListTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "posts/show.html")]
+#[template(path = "themes/default/single.html")]
 struct PostShowTemplate {
     post: PostWithAuthor,
     html_content: String,

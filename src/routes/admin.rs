@@ -64,6 +64,7 @@ struct SettingsTemplate {
     site_name: String,
     site_description: String,
     logo_url: String,
+    active_theme: String,
     saved: Option<String>,
 }
 
@@ -727,16 +728,18 @@ struct SettingsForm {
     site_name: Option<String>,
     site_description: Option<String>,
     logo_url: Option<String>,
+    active_theme: Option<String>,
 }
 
 async fn settings_page(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let (post_url_type, site_name, site_description, logo_url) = tokio::join!(
+    let (post_url_type, site_name, site_description, logo_url, active_theme) = tokio::join!(
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
         Setting::site_description(&pool),
         Setting::logo_url(&pool),
+        Setting::active_theme(&pool),
     );
-    render(SettingsTemplate { post_url_type, site_name, site_description, logo_url, saved: None })
+    render(SettingsTemplate { post_url_type, site_name, site_description, logo_url, active_theme, saved: None })
 }
 
 async fn settings_save(
@@ -751,12 +754,15 @@ async fn settings_save(
     let site_name = if site_name.is_empty() { "RedLeaf CMS".to_string() } else { site_name };
     let site_description = form.site_description.as_deref().unwrap_or("").trim().to_string();
     let logo_url = form.logo_url.as_deref().unwrap_or("").trim().to_string();
+    let active_theme = form.active_theme.as_deref().unwrap_or("default").trim().to_string();
+    let active_theme = if active_theme.is_empty() { "default".to_string() } else { active_theme };
 
     tokio::try_join!(
         Setting::set(&pool, "post_url_type", url_type),
         Setting::set(&pool, "site_name", &site_name),
         Setting::set(&pool, "site_description", &site_description),
         Setting::set(&pool, "logo_url", &logo_url),
+        Setting::set(&pool, "active_theme", &active_theme),
     )?;
 
     render(SettingsTemplate {
@@ -764,6 +770,7 @@ async fn settings_save(
         site_name,
         site_description,
         logo_url,
+        active_theme,
         saved: Some("Settings saved.".to_string()),
     })
 }

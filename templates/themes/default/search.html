@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if query.is_empty() %}Search{% else %}Search: {{ query }}{% endif %} — {{ site_name }}
+{% endblock %}
+
+{% block style %}
+body { background: #f5f5f5; }
+main { max-width: 800px; margin: 0 auto; padding: 2rem; }
+h1 { color: #2d5f3e; margin-top: 0; }
+.search-form { display: flex; gap: .6rem; margin-bottom: 2rem; }
+.search-form input[type=text] {
+  flex: 1; padding: .6rem 1rem; font-size: 1rem;
+  border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit;
+}
+.search-form input[type=text]:focus { outline: none; border-color: #2d5f3e; box-shadow: 0 0 0 3px rgba(45,95,62,.1); }
+.search-form button {
+  padding: .6rem 1.25rem; background: #2d5f3e; color: white;
+  border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; font-family: inherit;
+}
+.search-form button:hover { background: #234a30; }
+.result-count { color: #6b7280; font-size: .9rem; margin-bottom: 1.25rem; }
+.post { background: white; padding: 1.5rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.post h2 { margin: 0 0 .35rem; font-size: 1.1rem; }
+.post h2 a { text-decoration: none; color: #2d5f3e; }
+.post h2 a:hover { text-decoration: underline; }
+.post-meta { color: #888; font-size: .85rem; margin: 0 0 .6rem; }
+.post-excerpt { color: #444; font-size: .93rem; margin: 0; }
+.no-results { text-align: center; color: #9ca3af; padding: 3rem 0; }
+.no-results p { margin: .5rem 0; }
+.back-link { display: inline-block; margin-top: 1.5rem; color: #2d5f3e; text-decoration: none; font-weight: 500; }
+.back-link:hover { text-decoration: underline; }
+{% endblock %}
+
+{% block body %}
+<main>
+  <h1>Search</h1>
+
+  <form class="search-form" action="/search" method="get">
+    <input type="text" name="q" value="{{ query }}" placeholder="Search posts…" autofocus>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if !query.is_empty() %}
+    {% if posts.is_empty() %}
+    <div class="no-results">
+      <p style="font-size:2rem;">🔍</p>
+      <p>No results found for <strong>"{{ query }}"</strong>.</p>
+      <p style="font-size:.9rem;">Try different keywords or check your spelling.</p>
+    </div>
+    {% else %}
+    <p class="result-count">{{ posts.len() }} result{% if posts.len() != 1 %}s{% endif %} for <strong>"{{ query }}"</strong></p>
+    {% for post in posts %}
+    <div class="post">
+      <h2>
+        <a href="/posts/{% if post_url_type == "id" %}{{ post.id }}{% else %}{{ post.slug }}{% endif %}">
+          {{ post.title }}
+        </a>
+      </h2>
+      <p class="post-meta">{{ post.created_at | rl_date("%Y-%m-%d") }}</p>
+      {% if let Some(excerpt) = &post.excerpt %}
+      <p class="post-excerpt">{{ excerpt }}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  {% endif %}
+
+  <a href="/" class="back-link">← Back to home</a>
+</main>
+{% endblock %}

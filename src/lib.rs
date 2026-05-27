@@ -32,6 +32,7 @@ pub fn build_app(pool: db::DbPool) -> Router {
         .nest("/auth", routes::auth_routes())
         .nest("/api", routes::api::api_public_routes().merge(protected_api))
         .nest_service("/static", ServeDir::new("static"))
+        .fallback(routes::not_found_handler)
         .layer(TraceLayer::new_for_http())
         .with_state(pool)
 }
