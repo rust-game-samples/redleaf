@@ -1,7 +1,12 @@
 use askama::Template;
 use axum::{extract::State, response::Response};
 
-use crate::{db::DbPool, models::{Post, Setting}, util::render};
+use crate::{
+    db::DbPool,
+    errors::AppError,
+    models::{Post, Setting},
+    util::render,
+};
 
 pub mod admin;
 pub mod auth;
@@ -19,11 +24,11 @@ struct IndexTemplate {
     post_url_type: String,
 }
 
-pub async fn index(State(pool): State<DbPool>) -> Response {
+pub async fn index(State(pool): State<DbPool>) -> Result<Response, AppError> {
     let (posts, post_url_type) = tokio::join!(
         Post::find_all(&pool),
         Setting::post_url_type(&pool),
     );
-    let posts = posts.unwrap_or_default();
+    let posts = posts?;
     render(IndexTemplate { posts, post_url_type })
 }

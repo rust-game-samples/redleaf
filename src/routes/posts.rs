@@ -1,19 +1,26 @@
 use askama::Template;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
+use serde::Deserialize;
 
-use crate::{db::DbPool, models::{Post, PostWithAuthor, Setting}, util::render};
+use crate::{
+    db::DbPool,
+    errors::AppError,
+    models::{Post, PostWithAuthor, Setting},
+    util::{render, Pagination, PER_PAGE},
+};
 
 #[derive(Template)]
 #[template(path = "posts/list.html")]
 struct PostListTemplate {
     posts: Vec<Post>,
     post_url_type: String,
+    paging: Pagination,
 }
 
 #[derive(Template)]
@@ -23,49 +30,51 @@ struct PostShowTemplate {
     html_content: String,
 }
 
+#[derive(Deserialize, Default)]
+struct PageQuery {
+    page: Option<i64>,
+}
+
 pub fn post_routes() -> Router<DbPool> {
     Router::new()
         .route("/", get(list_posts))
         .route("/{param}", get(show_post))
 }
 
-async fn list_posts(State(pool): State<DbPool>) -> Response {
-    let (posts, post_url_type) = tokio::join!(
-        Post::find_all(&pool),
+async fn list_posts(
+    State(pool): State<DbPool>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response, AppError> {
+    let page = q.page.unwrap_or(1).max(1);
+
+    let (posts, total, post_url_type) = tokio::join!(
+        Post::find_published_paginated(&pool, page, PER_PAGE),
+        Post::count_published(&pool),
         Setting::post_url_type(&pool),
     );
-    match posts {
-        Ok(posts) => render(PostListTemplate { posts, post_url_type }),
-        Err(e) => {
-            tracing::error!("Failed to fetch posts: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Error loading posts").into_response()
-        }
-    }
+
+    let paging = Pagination::new(page, total?, PER_PAGE, "/posts");
+    render(PostListTemplate { posts: posts?, post_url_type, paging })
 }
 
-async fn show_post(State(pool): State<DbPool>, Path(param): Path<String>) -> Response {
+async fn show_post(
+    State(pool): State<DbPool>,
+    Path(param): Path<String>,
+) -> Result<Response, AppError> {
     let url_type = Setting::post_url_type(&pool).await;
 
-    let result = if url_type == "id" {
-        match param.parse::<i64>() {
-            Ok(id) => Post::find_by_id_with_author(&pool, id).await,
-            Err(_) => return (StatusCode::NOT_FOUND, "Post not found").into_response(),
-        }
+    let post = if url_type == "id" {
+        let id = param
+            .parse::<i64>()
+            .map_err(|_| AppError::NotFound)?;
+        Post::find_by_id_with_author(&pool, id).await?
     } else {
-        Post::find_by_slug_with_author(&pool, &param).await
+        Post::find_by_slug_with_author(&pool, &param).await?
     };
 
-    match result {
-        Ok(Some(post)) => {
-            let html_content = markdown_to_html(&post.content);
-            render(PostShowTemplate { post, html_content })
-        }
-        Ok(None) => (StatusCode::NOT_FOUND, "Post not found").into_response(),
-        Err(e) => {
-            tracing::error!("Failed to fetch post {}: {}", param, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Error loading post").into_response()
-        }
-    }
+    let post = post.ok_or(AppError::NotFound)?;
+    let html_content = markdown_to_html(&post.content);
+    render(PostShowTemplate { post, html_content })
 }
 
 fn markdown_to_html(markdown: &str) -> String {

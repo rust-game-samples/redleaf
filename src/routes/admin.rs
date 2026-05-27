@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-    extract::{Extension, Form, Path, State},
+    extract::{Extension, Form, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::{
     auth::{generate_token, Claims},
     db::DbPool,
+    errors::AppError,
     models::{
         Post,
         PostWithAuthor,
@@ -19,7 +20,7 @@ use crate::{
         user::{CreateUser, LoginUser},
         User,
     },
-    util::render,
+    util::{render, Pagination, PER_PAGE},
 };
 
 // ─── Login / register templates ──────────────────────────────────────────────
@@ -61,6 +62,7 @@ struct DashboardTemplate {
 #[template(path = "admin/posts/list.html")]
 struct PostListTemplate {
     posts: Vec<PostWithAuthor>,
+    paging: Pagination,
 }
 
 #[derive(Template)]
@@ -106,6 +108,11 @@ impl PostFormTemplate {
 
 // ─── Form input ──────────────────────────────────────────────────────────────
 
+#[derive(Deserialize, Default)]
+struct PageQuery {
+    page: Option<i64>,
+}
+
 #[derive(Debug, Deserialize)]
 struct PostForm {
     title: String,
@@ -138,46 +145,39 @@ pub fn admin_routes() -> Router<DbPool> {
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
 
-async fn login_page() -> Response {
+async fn login_page() -> Result<Response, AppError> {
     render(LoginTemplate { error: None })
 }
 
-async fn login_submit(State(pool): State<DbPool>, Form(payload): Form<LoginUser>) -> Response {
-    let user = match User::authenticate(&pool, payload).await {
-        Ok(Some(u)) => u,
-        Ok(None) => {
+async fn login_submit(
+    State(pool): State<DbPool>,
+    Form(payload): Form<LoginUser>,
+) -> Result<Response, AppError> {
+    let user = match User::authenticate(&pool, payload)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        Some(u) => u,
+        None => {
             return render(LoginTemplate {
                 error: Some("Invalid email or password.".to_string()),
-            })
-        }
-        Err(e) => {
-            tracing::error!("Authentication error: {}", e);
-            return render(LoginTemplate {
-                error: Some("Internal error. Please try again.".to_string()),
             });
         }
     };
 
-    let token = match generate_token(&user) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::error!("Token generation failed: {}", e);
-            return render(LoginTemplate {
-                error: Some("Internal error. Please try again.".to_string()),
-            });
-        }
-    };
+    let token = generate_token(&user)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let cookie = format!(
         "session={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=604800",
         token
     );
-    Response::builder()
+    Ok(Response::builder()
         .status(StatusCode::SEE_OTHER)
         .header(header::LOCATION, "/admin")
         .header(header::SET_COOKIE, cookie)
         .body(axum::body::Body::empty())
-        .unwrap()
+        .unwrap())
 }
 
 async fn logout() -> Response {
@@ -192,7 +192,7 @@ async fn logout() -> Response {
         .unwrap()
 }
 
-async fn register_page() -> Response {
+async fn register_page() -> Result<Response, AppError> {
     render(RegisterTemplate {
         error: None,
         prefill_username: String::new(),
@@ -203,7 +203,7 @@ async fn register_page() -> Response {
 async fn register_submit(
     State(pool): State<DbPool>,
     Form(payload): Form<CreateUser>,
-) -> Response {
+) -> Result<Response, AppError> {
     let prefill_username = payload.username.clone();
     let prefill_email = payload.email.clone();
 
@@ -213,8 +213,7 @@ async fn register_submit(
             let msg = if e.to_string().contains("UNIQUE constraint failed") {
                 "Username or email is already taken.".to_string()
             } else {
-                tracing::error!("Registration error: {}", e);
-                "Internal error. Please try again.".to_string()
+                return Err(AppError::Internal(e.to_string()));
             };
             return render(RegisterTemplate {
                 error: Some(msg),
@@ -224,28 +223,19 @@ async fn register_submit(
         }
     };
 
-    let token = match generate_token(&user) {
-        Ok(t) => t,
-        Err(e) => {
-            tracing::error!("Token generation failed: {}", e);
-            return render(RegisterTemplate {
-                error: Some("Internal error. Please try again.".to_string()),
-                prefill_username,
-                prefill_email,
-            });
-        }
-    };
+    let token = generate_token(&user)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
 
     let cookie = format!(
         "session={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=604800",
         token
     );
-    Response::builder()
+    Ok(Response::builder()
         .status(StatusCode::SEE_OTHER)
         .header(header::LOCATION, "/admin")
         .header(header::SET_COOKIE, cookie)
         .body(axum::body::Body::empty())
-        .unwrap()
+        .unwrap())
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -280,35 +270,31 @@ fn form_to_create(form: PostForm) -> CreatePost {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
-async fn dashboard(State(pool): State<DbPool>) -> Response {
-    let total = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM posts")
-        .fetch_one(&pool)
-        .await
-        .unwrap_or(0);
-    let published =
+async fn dashboard(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let (total, published) = tokio::join!(
+        Post::count_all(&pool),
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM posts WHERE published = 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap_or(0);
-
-    render(DashboardTemplate {
-        total,
-        published,
-        drafts: total - published,
-    })
+            .fetch_one(&pool),
+    );
+    let total = total?;
+    let published = published?;
+    render(DashboardTemplate { total, published, drafts: total - published })
 }
 
-async fn list_posts(State(pool): State<DbPool>) -> Response {
-    match Post::find_all_admin_with_author(&pool).await {
-        Ok(posts) => render(PostListTemplate { posts }),
-        Err(e) => {
-            tracing::error!("Failed to fetch posts: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Error loading posts").into_response()
-        }
-    }
+async fn list_posts(
+    State(pool): State<DbPool>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response, AppError> {
+    let page = q.page.unwrap_or(1).max(1);
+    let (posts, total) = tokio::join!(
+        Post::find_admin_paginated(&pool, page, PER_PAGE),
+        Post::count_all(&pool),
+    );
+    let paging = Pagination::new(page, total?, PER_PAGE, "/admin/posts");
+    render(PostListTemplate { posts: posts?, paging })
 }
 
-async fn new_post_form() -> Response {
+async fn new_post_form() -> Result<Response, AppError> {
     render(PostFormTemplate::new("/admin/posts", "New Post"))
 }
 
@@ -316,18 +302,17 @@ async fn create_post(
     State(pool): State<DbPool>,
     Extension(claims): Extension<Claims>,
     Form(form): Form<PostForm>,
-) -> Response {
+) -> Result<Response, AppError> {
     let mut payload = form_to_create(form);
     payload.author_id = Some(claims.sub);
 
     match Post::create(&pool, payload).await {
-        Ok(_) => Redirect::to("/admin/posts").into_response(),
+        Ok(_) => Ok(Redirect::to("/admin/posts").into_response()),
         Err(e) => {
-            tracing::error!("Failed to create post: {}", e);
             let msg = if e.to_string().contains("UNIQUE constraint failed") {
                 "Slug already exists. Please choose a different slug.".to_string()
             } else {
-                format!("Error saving post: {e}")
+                return Err(AppError::Database(e));
             };
             let mut tmpl = PostFormTemplate::new("/admin/posts", "New Post");
             tmpl.error = Some(msg);
@@ -336,22 +321,19 @@ async fn create_post(
     }
 }
 
-async fn edit_post_form(State(pool): State<DbPool>, Path(id): Path<i64>) -> Response {
-    match Post::find_by_id(&pool, id).await {
-        Ok(Some(post)) => render(PostFormTemplate::from_post(&post)),
-        Ok(None) => (StatusCode::NOT_FOUND, "Post not found").into_response(),
-        Err(e) => {
-            tracing::error!("Failed to fetch post {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Error loading post").into_response()
-        }
-    }
+async fn edit_post_form(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let post = Post::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    render(PostFormTemplate::from_post(&post))
 }
 
 async fn update_post(
     State(pool): State<DbPool>,
     Path(id): Path<i64>,
     Form(form): Form<PostForm>,
-) -> Response {
+) -> Result<Response, AppError> {
     let slug = if form.slug.trim().is_empty() {
         slugify(&form.title)
     } else {
@@ -366,39 +348,35 @@ async fn update_post(
         published: Some(form.published.is_some()),
     };
 
-    match Post::update(&pool, id, payload).await {
-        Ok(_) => Redirect::to("/admin/posts").into_response(),
-        Err(sqlx::Error::RowNotFound) => {
-            (StatusCode::NOT_FOUND, "Post not found").into_response()
-        }
-        Err(e) => {
-            tracing::error!("Failed to update post {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("Error: {e}")).into_response()
-        }
-    }
+    Post::update(&pool, id, payload).await.map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        other => AppError::Database(other),
+    })?;
+    Ok(Redirect::to("/admin/posts").into_response())
 }
 
-async fn delete_post(State(pool): State<DbPool>, Path(id): Path<i64>) -> Redirect {
-    if let Err(e) = Post::delete(&pool, id).await {
-        tracing::error!("Failed to delete post {}: {}", id, e);
-    }
-    Redirect::to("/admin/posts")
+async fn delete_post(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Post::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/posts").into_response())
 }
 
-async fn toggle_published(State(pool): State<DbPool>, Path(id): Path<i64>) -> Redirect {
-    if let Ok(Some(post)) = Post::find_by_id(&pool, id).await {
-        let payload = UpdatePost {
-            title: None,
-            slug: None,
-            content: None,
-            excerpt: None,
-            published: Some(!post.published),
-        };
-        if let Err(e) = Post::update(&pool, id, payload).await {
-            tracing::error!("Failed to toggle post {}: {}", id, e);
-        }
-    }
-    Redirect::to("/admin/posts")
+async fn toggle_published(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let post = Post::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    let payload = UpdatePost {
+        title: None,
+        slug: None,
+        content: None,
+        excerpt: None,
+        published: Some(!post.published),
+    };
+    Post::update(&pool, id, payload).await?;
+    Ok(Redirect::to("/admin/posts").into_response())
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -408,7 +386,7 @@ struct SettingsForm {
     post_url_type: Option<String>,
 }
 
-async fn settings_page(State(pool): State<DbPool>) -> Response {
+async fn settings_page(State(pool): State<DbPool>) -> Result<Response, AppError> {
     let post_url_type = Setting::post_url_type(&pool).await;
     render(SettingsTemplate { post_url_type, saved: None })
 }
@@ -416,16 +394,12 @@ async fn settings_page(State(pool): State<DbPool>) -> Response {
 async fn settings_save(
     State(pool): State<DbPool>,
     Form(form): Form<SettingsForm>,
-) -> Response {
+) -> Result<Response, AppError> {
     let url_type = match form.post_url_type.as_deref() {
         Some("id") => "id",
         _ => "slug",
     };
-
-    if let Err(e) = Setting::set(&pool, "post_url_type", url_type).await {
-        tracing::error!("Failed to save settings: {}", e);
-    }
-
+    Setting::set(&pool, "post_url_type", url_type).await?;
     render(SettingsTemplate {
         post_url_type: url_type.to_string(),
         saved: Some("Settings saved.".to_string()),

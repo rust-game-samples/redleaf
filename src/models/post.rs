@@ -61,6 +61,27 @@ impl Post {
         .await
     }
 
+    pub async fn find_published_paginated(
+        pool: &DbPool,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<Post>, sqlx::Error> {
+        let offset = (page - 1) * per_page;
+        sqlx::query_as::<_, Post>(
+            "SELECT * FROM posts WHERE published = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        )
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn count_published(pool: &DbPool) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE published = 1")
+            .fetch_one(pool)
+            .await
+    }
+
     pub async fn find_all_admin(pool: &DbPool) -> Result<Vec<Post>, sqlx::Error> {
         sqlx::query_as::<_, Post>("SELECT * FROM posts ORDER BY created_at DESC")
             .fetch_all(pool)
@@ -80,6 +101,33 @@ impl Post {
         )
         .fetch_all(pool)
         .await
+    }
+
+    pub async fn find_admin_paginated(
+        pool: &DbPool,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<PostWithAuthor>, sqlx::Error> {
+        let offset = (page - 1) * per_page;
+        sqlx::query_as::<_, PostWithAuthor>(
+            r#"
+            SELECT p.*, u.username AS author_username
+            FROM posts p
+            LEFT JOIN users u ON u.id = p.author_id
+            ORDER BY p.created_at DESC
+            LIMIT ? OFFSET ?
+            "#,
+        )
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn count_all(pool: &DbPool) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM posts")
+            .fetch_one(pool)
+            .await
     }
 
     pub async fn find_by_id(pool: &DbPool, id: i64) -> Result<Option<Post>, sqlx::Error> {

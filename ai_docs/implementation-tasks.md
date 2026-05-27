@@ -103,25 +103,25 @@
 
 #### 投稿スラッグ URL 対応
 
-- [ ] 個別投稿を `/posts/{id}` から `/posts/{slug}` へ変更
-- [ ] スラッグ自動生成（タイトルから ASCII 変換）
+- [x] 個別投稿を `/posts/{id}` から `/posts/{slug}` へ変更
+- [x] スラッグ自動生成（タイトルから ASCII 変換）
 
 #### 投稿者
 
-- [ ] `posts.author_id` カラム追加（マイグレーション）
-- [ ] `Post` 構造体に `author_id: Option<i64>` 追加
-- [ ] 投稿作成時に認証ユーザーの ID を自動セット
+- [x] `posts.author_id` カラム追加（マイグレーション）
+- [x] `Post` 構造体に `author_id: Option<i64>` 追加
+- [x] 投稿作成時に認証ユーザーの ID を自動セット
 
 #### ページネーション
 
-- [ ] 投稿一覧に `LIMIT` / `OFFSET` 追加
-- [ ] ページネーション UI コンポーネント
+- [x] 投稿一覧に `LIMIT` / `OFFSET` 追加（`PER_PAGE = 10`）
+- [x] ページネーション UI コンポーネント（公開一覧・管理一覧）
 
 #### エラーハンドリング統一
 
-- [ ] `src/errors.rs` に統一エラー型定義（`thiserror` 使用）
-- [ ] HTTP ステータスコードへのマッピング実装
-- [ ] 各ハンドラのエラー処理を統一型へ移行
+- [x] `src/errors.rs` に統一エラー型定義（`thiserror` 使用）
+- [x] HTTP ステータスコードへのマッピング実装（`AppError: IntoResponse`）
+- [x] 各ハンドラのエラー処理を統一型へ移行（`Result<Response, AppError>` + `?` 演算子）
 
 ---
 

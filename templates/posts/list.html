@@ -11,6 +11,12 @@ h1 { color: #2d5f3e; }
 .post h2 a { text-decoration: none; color: #2d5f3e; }
 .post h2 a:hover { text-decoration: underline; }
 .meta { color: #666; font-size: .9rem; margin: .25rem 0 .75rem; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 2rem; }
+.pag-btn { display: inline-block; padding: .45rem 1rem; border-radius: 6px; background: white;
+           box-shadow: 0 1px 3px rgba(0,0,0,.1); text-decoration: none; color: #2d5f3e; font-weight: 500; }
+.pag-btn:hover { background: #f0f0f0; }
+.pag-btn.disabled { color: #aaa; pointer-events: none; }
+.pag-info { color: #666; font-size: .9rem; }
 {% endblock %}
 
 {% block body %}
@@ -28,6 +34,21 @@ h1 { color: #2d5f3e; }
     {% endif %}
   </div>
   {% endfor %}
+  {% endif %}
+  {% if paging.total_pages > 1 %}
+  <nav class="pagination">
+    {% if paging.has_prev %}
+    <a href="{{ paging.base_url }}?page={{ paging.prev_page }}" class="pag-btn">← Previous</a>
+    {% else %}
+    <span class="pag-btn disabled">← Previous</span>
+    {% endif %}
+    <span class="pag-info">Page {{ paging.current_page }} of {{ paging.total_pages }}</span>
+    {% if paging.has_next %}
+    <a href="{{ paging.base_url }}?page={{ paging.next_page }}" class="pag-btn">Next →</a>
+    {% else %}
+    <span class="pag-btn disabled">Next →</span>
+    {% endif %}
+  </nav>
   {% endif %}
 </main>
 {% endblock %}

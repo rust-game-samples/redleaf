@@ -68,4 +68,23 @@
     </tbody>
   </table>
 </div>
+{% if paging.total_pages > 1 %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:.75rem;">
+  <span style="color:#6b7280;font-size:.875rem;">
+    {{ paging.total }} posts &nbsp;·&nbsp; Page {{ paging.current_page }} of {{ paging.total_pages }}
+  </span>
+  <div style="display:flex;gap:.5rem;">
+    {% if paging.has_prev %}
+    <a href="{{ paging.base_url }}?page={{ paging.prev_page }}" class="btn btn-secondary">← Prev</a>
+    {% else %}
+    <span class="btn btn-secondary" style="opacity:.4;cursor:default;">← Prev</span>
+    {% endif %}
+    {% if paging.has_next %}
+    <a href="{{ paging.base_url }}?page={{ paging.next_page }}" class="btn btn-secondary">Next →</a>
+    {% else %}
+    <span class="btn btn-secondary" style="opacity:.4;cursor:default;">Next →</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}
