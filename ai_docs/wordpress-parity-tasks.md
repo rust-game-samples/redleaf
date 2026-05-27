@@ -71,12 +71,16 @@ WordPress に近づけるための機能追加タスク。
 
 ## フェーズ 2 — テンプレートシステム 🟠 中優先度
 
-### `wp_head` / `wp_footer` 相当のフック
+### 命名規則
+
+- [ ] テンプレートシステム全体で `wp_` プリフィックスの代わりに `rl_` プリフィックスを使用する（例: `rl_head()` / `rl_footer()` / `rl_enqueue_script()` / `rl_nav_menu()` など）
+
+### `rl_head` / `rl_footer` 相当のフック
 
 - [ ] `HookRegistry` 構造体の実装（`add_action` / `do_action` / `add_filter` / `apply_filters`）
-- [ ] `{% call wp_head() %}` 相当の Askama テンプレートマクロ（head タグ内スクリプト/スタイル注入）
-- [ ] `{% call wp_footer() %}` 相当（フッタースクリプト注入）
-- [ ] `wp_enqueue_script` / `wp_enqueue_style` 相当の Asset 管理
+- [ ] `{% call rl_head() %}` 相当の Askama テンプレートマクロ（head タグ内スクリプト/スタイル注入）
+- [ ] `{% call rl_footer() %}` 相当（フッタースクリプト注入）
+- [ ] `rl_enqueue_script` / `rl_enqueue_style` 相当の Asset 管理
 
 ### テンプレートタグ
 
@@ -112,7 +116,7 @@ WordPress に近づけるための機能追加タスク。
 - [ ] `nav_menus` / `nav_menu_items` テーブル追加
 - [ ] 管理画面: メニュー作成・アイテム追加（URL / 固定ページ / カテゴリ / 外部リンク）
 - [ ] 管理画面: ドラッグ＆ドロップでメニュー並び替え・階層設定
-- [ ] テンプレート内 `{{ wp_nav_menu(location) }}` で `<ul>` レンダリング
+- [ ] テンプレート内 `{{ rl_nav_menu(location) }}` で `<ul>` レンダリング
 - [ ] メニューロケーション登録（primary / footer / social など）
 
 ### パンくずリスト (Breadcrumbs)
