@@ -1,6 +1,9 @@
+pub mod assets;
 pub mod auth;
 pub mod db;
 pub mod errors;
+pub mod filters;
+pub mod hooks;
 pub mod middleware;
 pub mod models;
 pub mod routes;

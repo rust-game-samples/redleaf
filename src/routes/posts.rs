@@ -10,6 +10,7 @@ use serde::Deserialize;
 use crate::{
     db::DbPool,
     errors::AppError,
+    filters,
     models::{Post, PostWithAuthor, Setting, Tag},
     util::{render, Pagination, PER_PAGE},
 };
@@ -23,6 +24,27 @@ struct PostListTemplate {
     site_name: String,
 }
 
+impl PostListTemplate {
+    /// Returns the permalink for a post according to the configured URL type.
+    fn permalink_for(&self, post: &Post) -> String {
+        if self.post_url_type == "id" {
+            format!("/posts/{}", post.id)
+        } else {
+            format!("/posts/{}", post.slug)
+        }
+    }
+
+    /// Returns the site root URL (always "/" — useful for templates).
+    fn home_url(&self) -> &str {
+        "/"
+    }
+
+    /// Returns the site root URL (alias of home_url).
+    fn site_url(&self) -> &str {
+        "/"
+    }
+}
+
 #[derive(Template)]
 #[template(path = "posts/show.html")]
 struct PostShowTemplate {
@@ -30,6 +52,94 @@ struct PostShowTemplate {
     html_content: String,
     tags: Vec<Tag>,
     site_name: String,
+    post_url_type: String,
+}
+
+impl PostShowTemplate {
+    /// `the_title` — returns the post title (HTML-escaped by Askama automatically).
+    fn the_title(&self) -> &str {
+        &self.post.title
+    }
+
+    /// `the_content` — returns rendered HTML content (mark as safe in template with `|safe`).
+    fn the_content(&self) -> &str {
+        &self.html_content
+    }
+
+    /// `the_excerpt` — returns the stored excerpt, or auto-generates one from content.
+    fn the_excerpt(&self) -> String {
+        if let Some(exc) = &self.post.excerpt {
+            if !exc.is_empty() {
+                return exc.clone();
+            }
+        }
+        let plain = crate::filters::strip_markdown(&self.post.content);
+        if plain.chars().count() <= 150 {
+            plain
+        } else {
+            let t: String = plain.chars().take(150).collect();
+            let cut = t.rfind(' ').unwrap_or(t.len());
+            format!("{}…", &t[..cut])
+        }
+    }
+
+    /// `the_permalink` — canonical URL for this post.
+    fn the_permalink(&self) -> String {
+        if self.post_url_type == "id" {
+            format!("/posts/{}", self.post.id)
+        } else {
+            format!("/posts/{}", self.post.slug)
+        }
+    }
+
+    /// `the_date` — publication date in the given strftime format.
+    fn the_date(&self, fmt: &str) -> String {
+        self.post.created_at.format(fmt).to_string()
+    }
+
+    /// `the_author` — display name of the post author, if available.
+    fn the_author(&self) -> &str {
+        self.post
+            .author_username
+            .as_deref()
+            .unwrap_or("")
+    }
+
+    /// `the_post_thumbnail` — renders an `<img>` tag for the featured image.
+    /// `size` is one of: "thumbnail" (150px), "medium" (300px), "large" (1024px), or "full".
+    fn the_post_thumbnail(&self, size: &str) -> String {
+        let url = match &self.post.featured_image_url {
+            Some(u) => u,
+            None => return String::new(),
+        };
+        let max_w = match size {
+            "thumbnail" => "150px",
+            "medium" => "300px",
+            "large" => "1024px",
+            _ => "100%",
+        };
+        let alt = escape_html(&self.post.title);
+        format!(
+            r#"<img src="{url}" alt="{alt}" style="max-width:{max_w};object-fit:cover;" loading="lazy">"#
+        )
+    }
+
+    /// `home_url` — site root URL.
+    fn home_url(&self) -> &str {
+        "/"
+    }
+
+    /// `site_url` — site root URL (alias of home_url).
+    fn site_url(&self) -> &str {
+        "/"
+    }
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 #[derive(Deserialize, Default)]
@@ -81,7 +191,13 @@ async fn show_post(
     let post = post.ok_or(AppError::NotFound)?;
     let tags = Tag::find_by_post(&pool, post.id).await?;
     let html_content = markdown_to_html(&post.content);
-    render(PostShowTemplate { post, html_content, tags, site_name })
+    render(PostShowTemplate {
+        post,
+        html_content,
+        tags,
+        site_name,
+        post_url_type: url_type,
+    })
 }
 
 pub fn markdown_to_html_pub(markdown: &str) -> String {

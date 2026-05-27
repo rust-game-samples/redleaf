@@ -77,21 +77,21 @@ WordPress に近づけるための機能追加タスク。
 
 ### `rl_head` / `rl_footer` 相当のフック
 
-- [ ] `HookRegistry` 構造体の実装（`add_action` / `do_action` / `add_filter` / `apply_filters`）
-- [ ] `{% call rl_head() %}` 相当の Askama テンプレートマクロ（head タグ内スクリプト/スタイル注入）
-- [ ] `{% call rl_footer() %}` 相当（フッタースクリプト注入）
-- [ ] `rl_enqueue_script` / `rl_enqueue_style` 相当の Asset 管理
+- [x] `HookRegistry` 構造体の実装（`add_action` / `do_action` / `add_filter` / `apply_filters`）
+- [x] `{% block rl_head %}{% endblock %}` — Askama テンプレートブロック（head タグ内スクリプト/スタイル注入）
+- [x] `{% block rl_footer %}{% endblock %}` 相当（フッタースクリプト注入）
+- [x] `rl_enqueue_script` / `rl_enqueue_style` 相当の Asset 管理（`src/assets.rs` グローバルシングルトン）
 
 ### テンプレートタグ
 
-- [ ] `{{ the_title() }}` — 投稿タイトル（HTML エスケープ済み）
-- [ ] `{{ the_content() }}` — Markdown → HTML レンダリング済み本文
-- [ ] `{{ the_excerpt() }}` — 抜粋（なければ本文の先頭を自動生成）
-- [ ] `{{ the_permalink() }}` — 正規 URL（post_url_type 設定に従う）
-- [ ] `{{ the_date(format) }}` — 公開日フォーマット
-- [ ] `{{ the_author() }}` — 著者名
-- [ ] `{{ the_post_thumbnail(size) }}` — アイキャッチ画像 `<img>` タグ
-- [ ] `{{ site_url() }}` / `{{ home_url() }}` — サイト URL
+- [x] `{{ self.the_title() }}` — 投稿タイトル（HTML エスケープ済み）
+- [x] `{{ self.the_content()|safe }}` — Markdown → HTML レンダリング済み本文
+- [x] `{{ self.the_excerpt() }}` — 抜粋（なければ本文の先頭を自動生成）
+- [x] `{{ self.the_permalink() }}` — 正規 URL（post_url_type 設定に従う）
+- [x] `{{ self.the_date("%Y-%m-%d") }}` / `{{ post.created_at | rl_date("%B %d, %Y") }}` — 公開日フォーマット
+- [x] `{{ self.the_author() }}` — 著者名
+- [x] `{{ self.the_post_thumbnail("medium")|safe }}` — アイキャッチ画像 `<img>` タグ
+- [x] `{{ self.site_url() }}` / `{{ self.home_url() }}` — サイト URL
 
 ### テンプレート階層 (Template Hierarchy)
 
