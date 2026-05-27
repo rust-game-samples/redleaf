@@ -225,10 +225,10 @@ WordPress に近づけるための機能追加タスク。
 
 ### リッチテキストエディタ
 
-- [ ] 管理画面投稿フォームに [EasyMDE](https://github.com/Ionaru/easy-markdown-editor) を統合
-- [ ] 画像挿入ボタン（メディアライブラリ連携）
-- [ ] エディタのプレビューモード（リアルタイム Markdown プレビュー）
-- [ ] フルスクリーンエディタモード
+- [x] 管理画面投稿フォームに [EasyMDE](https://github.com/Ionaru/easy-markdown-editor) を統合
+- [x] 画像挿入ボタン（メディアライブラリ連携）
+- [x] エディタのプレビューモード（リアルタイム Markdown プレビュー）
+- [x] フルスクリーンエディタモード
 
 ### バルク操作
 

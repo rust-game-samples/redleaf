@@ -6,7 +6,18 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
+
+fn empty_string_as_none<'de, D>(d: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(d)?;
+    match s.as_deref() {
+        None | Some("") => Ok(None),
+        Some(v) => v.parse::<i64>().map(Some).map_err(serde::de::Error::custom),
+    }
+}
 
 use crate::{
     auth::{generate_token, Claims},
@@ -102,6 +113,7 @@ struct PageFormTemplate {
     parent_id: Option<i64>,
     all_pages: Vec<Page>,
     error: Option<String>,
+    media_images: Vec<Media>,
 }
 
 // ─── Revision template ────────────────────────────────────────────────────────
@@ -228,8 +240,10 @@ struct PostForm {
     excerpt: Option<String>,
     published: Option<String>,
     sticky: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     category_id: Option<i64>,
     tags: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     featured_image_id: Option<i64>,
     scheduled_at: Option<String>,
     #[serde(rename = "meta_key[]", default)]
@@ -878,7 +892,8 @@ async fn list_pages(State(pool): State<DbPool>) -> Result<Response, AppError> {
 }
 
 async fn new_page_form(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let all_pages = Page::find_all(&pool).await?;
+    let (all_pages, media) = tokio::join!(Page::find_all(&pool), Media::find_all(&pool));
+    let media_images = media?.into_iter().filter(|m| m.is_image()).collect();
     render(PageFormTemplate {
         heading: "New Page".into(),
         action: "/admin/pages".into(),
@@ -887,8 +902,9 @@ async fn new_page_form(State(pool): State<DbPool>) -> Result<Response, AppError>
         content: String::new(),
         status: "draft".into(),
         parent_id: None,
-        all_pages,
+        all_pages: all_pages?,
         error: None,
+        media_images,
     })
 }
 
@@ -915,7 +931,8 @@ async fn create_page(
             } else {
                 return Err(AppError::Database(e));
             };
-            let all_pages = Page::find_all(&pool).await?;
+            let (all_pages, media) = tokio::join!(Page::find_all(&pool), Media::find_all(&pool));
+            let media_images = media?.into_iter().filter(|m| m.is_image()).collect();
             render(PageFormTemplate {
                 heading: "New Page".into(),
                 action: "/admin/pages".into(),
@@ -924,8 +941,9 @@ async fn create_page(
                 content: String::new(),
                 status: "draft".into(),
                 parent_id: None,
-                all_pages,
+                all_pages: all_pages?,
                 error: Some(msg),
+                media_images,
             })
         }
     }
@@ -935,8 +953,13 @@ async fn edit_page_form(
     State(pool): State<DbPool>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    let (page, all_pages) = tokio::join!(Page::find_by_id(&pool, id), Page::find_all(&pool));
+    let (page, all_pages, media) = tokio::join!(
+        Page::find_by_id(&pool, id),
+        Page::find_all(&pool),
+        Media::find_all(&pool),
+    );
     let page = page?.ok_or(AppError::NotFound)?;
+    let media_images = media?.into_iter().filter(|m| m.is_image()).collect();
     render(PageFormTemplate {
         heading: "Edit Page".into(),
         action: format!("/admin/pages/{}", id),
@@ -947,6 +970,7 @@ async fn edit_page_form(
         parent_id: page.parent_id,
         all_pages: all_pages?,
         error: None,
+        media_images,
     })
 }
 

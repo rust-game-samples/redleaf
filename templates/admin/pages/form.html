@@ -2,6 +2,34 @@
 
 {% block title %}{{ heading }}{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<style>
+  .EasyMDEContainer .CodeMirror { font-family: ui-monospace, monospace; font-size: .88rem; min-height: 320px; }
+  .media-modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    z-index: 9999; align-items: center; justify-content: center;
+  }
+  .media-modal-overlay.open { display: flex; }
+  .media-modal {
+    background: white; border-radius: 8px; padding: 1.5rem;
+    max-width: 720px; width: 95vw; max-height: 80vh;
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .media-modal-header { display: flex; align-items: center; justify-content: space-between; }
+  .media-modal-header h2 { margin: 0; font-size: 1.1rem; color: #2d5f3e; }
+  .media-modal-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: .5rem; overflow-y: auto; flex: 1;
+  }
+  .media-modal-grid img {
+    width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px;
+    cursor: pointer; border: 2px solid transparent; transition: border-color .15s;
+  }
+  .media-modal-grid img:hover { border-color: #2d5f3e; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <h1>{{ heading }}</h1>
@@ -35,7 +63,7 @@
     </div>
     <div class="form-group">
       <label for="content">Content (Markdown)</label>
-      <textarea id="content" name="content" class="content-field">{{ content }}</textarea>
+      <textarea id="content" name="content">{{ content }}</textarea>
     </div>
     <div class="form-group">
       <label for="status">Status</label>
@@ -47,7 +75,66 @@
     <button type="submit" class="btn btn-primary">Save Page</button>
   </form>
 </div>
+
+<!-- Media insertion modal -->
+<div id="media-modal" class="media-modal-overlay" onclick="if(event.target===this)closeMediaModal()">
+  <div class="media-modal">
+    <div class="media-modal-header">
+      <h2>Insert Image</h2>
+      <button type="button" class="btn btn-secondary" onclick="closeMediaModal()">✕ Close</button>
+    </div>
+    <div class="media-modal-grid">
+      {% for img in media_images %}
+      <img src="{{ img.url }}" alt="{{ img.original_name }}"
+           onclick="insertImage('{{ img.url }}', '{{ img.original_name }}')"
+           title="{{ img.original_name }}">
+      {% endfor %}
+      {% if media_images.is_empty() %}
+      <p style="color:#9ca3af;grid-column:1/-1;">No images uploaded yet. <a href="/admin/media">Upload media →</a></p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 <script>
+  let mde;
+
+  function openMediaModal() {
+    document.getElementById('media-modal').classList.add('open');
+  }
+
+  function closeMediaModal() {
+    document.getElementById('media-modal').classList.remove('open');
+  }
+
+  function insertImage(url, name) {
+    const altText = name.replace(/\.[^.]+$/, '');
+    mde.codemirror.replaceSelection('![' + altText + '](' + url + ')');
+    closeMediaModal();
+    mde.codemirror.focus();
+  }
+
+  mde = new EasyMDE({
+    element: document.getElementById('content'),
+    spellChecker: false,
+    forceSync: true,
+    toolbar: [
+      'bold', 'italic', 'heading', '|',
+      'quote', 'unordered-list', 'ordered-list', '|',
+      'link',
+      {
+        name: 'insert-image',
+        action: openMediaModal,
+        className: 'fa fa-image',
+        title: 'Insert Image from Media Library',
+      },
+      '|',
+      'preview', 'side-by-side', 'fullscreen', '|',
+      'guide',
+    ],
+  });
+
   const titleEl = document.getElementById('title');
   const slugEl  = document.getElementById('slug');
   let slugEdited = slugEl.value.length > 0;
