@@ -3,6 +3,18 @@ use axum::response::{Html, IntoResponse, Response};
 
 use crate::errors::AppError;
 
+pub fn slugify(s: &str) -> String {
+    let slug: String = s
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    slug.split('-')
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 pub const PER_PAGE: i64 = 10;
 
 pub fn render<T: Template>(tmpl: T) -> Result<Response, AppError> {

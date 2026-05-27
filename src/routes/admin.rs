@@ -20,7 +20,7 @@ use crate::{
         user::{CreateUser, LoginUser},
         User,
     },
-    util::{render, Pagination, PER_PAGE},
+    util::{render, slugify, Pagination, PER_PAGE},
 };
 
 // ─── Login / register templates ──────────────────────────────────────────────
@@ -239,18 +239,6 @@ async fn register_submit(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-fn slugify(s: &str) -> String {
-    let slug: String = s
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    slug.split('-')
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-}
 
 fn form_to_create(form: PostForm) -> CreatePost {
     let slug = if form.slug.trim().is_empty() {

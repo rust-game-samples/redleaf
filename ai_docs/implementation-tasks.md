@@ -129,12 +129,14 @@
 
 #### REST API
 
-- [ ] `GET    /api/posts` — 投稿一覧 JSON
-- [ ] `GET    /api/posts/{id}` — 個別投稿 JSON
-- [ ] `POST   /api/posts` — 投稿作成（認証必須）
-- [ ] `PUT    /api/posts/{id}` — 投稿更新（認証必須）
-- [ ] `DELETE /api/posts/{id}` — 投稿削除（認証必須）
-- [ ] API キー認証 or JWT Bearer
+- [x] `GET    /api/posts` — 投稿一覧 JSON（公開済みのみ・ページネーション付き）
+- [x] `GET    /api/posts/{id}` — 個別投稿 JSON（未公開は 404）
+- [x] `POST   /api/posts` — 投稿作成（認証必須・201 Created）
+- [x] `PUT    /api/posts/{id}` — 投稿更新（認証必須・部分更新対応）
+- [x] `DELETE /api/posts/{id}` — 投稿削除（認証必須・204 No Content）
+- [x] JWT Bearer 認証（既存ミドルウェアを再利用）
+- [x] `ApiError` によるJSON形式エラーレスポンス（`{ "error": "..." }`）
+- [x] `tests/api_test.rs` — 13テスト
 
 #### カテゴリ・タグ
 

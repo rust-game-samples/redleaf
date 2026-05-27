@@ -46,6 +46,27 @@ pub async fn post_json(app: &Router, uri: &str, body: &Value, token: Option<&str
     (status, json)
 }
 
+pub async fn put_json(app: &Router, uri: &str, body: &Value, token: Option<&str>) -> (u16, Value) {
+    let mut req = Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header("Content-Type", "application/json");
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+    let (status, body) = send(app, req.body(Body::from(body.to_string())).unwrap()).await;
+    let json = serde_json::from_str(&body).unwrap_or(Value::Null);
+    (status, json)
+}
+
+pub async fn delete_req(app: &Router, uri: &str, token: Option<&str>) -> (u16, String) {
+    let mut req = Request::builder().method("DELETE").uri(uri);
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+    send(app, req.body(Body::empty()).unwrap()).await
+}
+
 pub async fn post_form(app: &Router, uri: &str, fields: &[(&str, &str)], token: Option<&str>) -> (u16, String) {
     let encoded = fields
         .iter()

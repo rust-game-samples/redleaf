@@ -13,12 +13,16 @@ pub fn build_app(pool: db::DbPool) -> Router {
     let protected_admin = routes::admin_routes()
         .layer(axum_middleware::from_fn(middleware::require_auth));
 
+    let protected_api = routes::api::api_protected_routes()
+        .layer(axum_middleware::from_fn(middleware::require_auth));
+
     Router::new()
         .route("/", get(routes::index))
         .nest("/posts", routes::post_routes())
         .nest("/admin", protected_admin)
         .merge(routes::admin_login_routes())
         .nest("/auth", routes::auth_routes())
+        .nest("/api", routes::api::api_public_routes().merge(protected_api))
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .with_state(pool)

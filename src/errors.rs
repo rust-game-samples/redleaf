@@ -1,7 +1,9 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use serde_json::json;
 
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
@@ -56,4 +58,40 @@ impl AppError {
             AppError::Database(e)
         }
     }
+}
+
+// ─── API error (returns JSON) ─────────────────────────────────────────────────
+
+/// Wraps `AppError` but serialises the response body as JSON.
+pub struct ApiError(pub AppError);
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (status, msg) = match self.0 {
+            AppError::NotFound => (StatusCode::NOT_FOUND, "Not found".to_string()),
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
+            AppError::Conflict(m) => (StatusCode::CONFLICT, m),
+            AppError::Database(e) => {
+                tracing::error!("Database error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+            }
+            AppError::Template(e) => {
+                tracing::error!("Template error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal error".to_string())
+            }
+            AppError::Internal(m) => {
+                tracing::error!("Internal error: {}", m);
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+            }
+        };
+        (status, Json(json!({ "error": msg }))).into_response()
+    }
+}
+
+impl From<AppError> for ApiError {
+    fn from(e: AppError) -> Self { ApiError(e) }
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(e: sqlx::Error) -> Self { ApiError(AppError::Database(e)) }
 }

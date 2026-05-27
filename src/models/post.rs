@@ -18,7 +18,7 @@ pub struct Post {
 }
 
 /// Post with author username resolved via LEFT JOIN.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, Serialize, FromRow)]
 pub struct PostWithAuthor {
     pub id: i64,
     pub title: String,
@@ -80,6 +80,28 @@ impl Post {
         sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE published = 1")
             .fetch_one(pool)
             .await
+    }
+
+    pub async fn find_published_paginated_with_author(
+        pool: &DbPool,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<PostWithAuthor>, sqlx::Error> {
+        let offset = (page - 1) * per_page;
+        sqlx::query_as::<_, PostWithAuthor>(
+            r#"
+            SELECT p.*, u.username AS author_username
+            FROM posts p
+            LEFT JOIN users u ON u.id = p.author_id
+            WHERE p.published = 1
+            ORDER BY p.created_at DESC
+            LIMIT ? OFFSET ?
+            "#,
+        )
+        .bind(per_page)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
     }
 
     pub async fn find_all_admin(pool: &DbPool) -> Result<Vec<Post>, sqlx::Error> {
