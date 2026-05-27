@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 
-use crate::{db::DbPool, models::{Post, Setting}, util::render};
+use crate::{db::DbPool, models::{Post, PostWithAuthor, Setting}, util::render};
 
 #[derive(Template)]
 #[template(path = "posts/list.html")]
@@ -19,7 +19,7 @@ struct PostListTemplate {
 #[derive(Template)]
 #[template(path = "posts/show.html")]
 struct PostShowTemplate {
-    post: Post,
+    post: PostWithAuthor,
     html_content: String,
 }
 
@@ -48,11 +48,11 @@ async fn show_post(State(pool): State<DbPool>, Path(param): Path<String>) -> Res
 
     let result = if url_type == "id" {
         match param.parse::<i64>() {
-            Ok(id) => Post::find_by_id(&pool, id).await,
+            Ok(id) => Post::find_by_id_with_author(&pool, id).await,
             Err(_) => return (StatusCode::NOT_FOUND, "Post not found").into_response(),
         }
     } else {
-        Post::find_by_slug(&pool, &param).await
+        Post::find_by_slug_with_author(&pool, &param).await
     };
 
     match result {
@@ -71,7 +71,6 @@ async fn show_post(State(pool): State<DbPool>, Path(param): Path<String>) -> Res
 fn markdown_to_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
 
-    // Normalize CRLF (from HTML forms) to LF
     let normalized = markdown.replace("\r\n", "\n");
 
     let mut options = Options::empty();

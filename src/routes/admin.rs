@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-    extract::{Form, Path, State},
+    extract::{Extension, Form, Path, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -9,10 +9,11 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    auth::generate_token,
+    auth::{generate_token, Claims},
     db::DbPool,
     models::{
         Post,
+        PostWithAuthor,
         Setting,
         post::{CreatePost, UpdatePost},
         user::{CreateUser, LoginUser},
@@ -59,7 +60,7 @@ struct DashboardTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/list.html")]
 struct PostListTemplate {
-    posts: Vec<Post>,
+    posts: Vec<PostWithAuthor>,
 }
 
 #[derive(Template)]
@@ -273,6 +274,7 @@ fn form_to_create(form: PostForm) -> CreatePost {
         content: form.content,
         excerpt: form.excerpt.filter(|s| !s.trim().is_empty()),
         published: form.published.is_some(),
+        author_id: None,
     }
 }
 
@@ -297,7 +299,7 @@ async fn dashboard(State(pool): State<DbPool>) -> Response {
 }
 
 async fn list_posts(State(pool): State<DbPool>) -> Response {
-    match Post::find_all_admin(&pool).await {
+    match Post::find_all_admin_with_author(&pool).await {
         Ok(posts) => render(PostListTemplate { posts }),
         Err(e) => {
             tracing::error!("Failed to fetch posts: {}", e);
@@ -310,8 +312,13 @@ async fn new_post_form() -> Response {
     render(PostFormTemplate::new("/admin/posts", "New Post"))
 }
 
-async fn create_post(State(pool): State<DbPool>, Form(form): Form<PostForm>) -> Response {
-    let payload = form_to_create(form);
+async fn create_post(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Form(form): Form<PostForm>,
+) -> Response {
+    let mut payload = form_to_create(form);
+    payload.author_id = Some(claims.sub);
 
     match Post::create(&pool, payload).await {
         Ok(_) => Redirect::to("/admin/posts").into_response(),

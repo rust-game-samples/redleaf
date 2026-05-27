@@ -14,6 +14,7 @@
         <th>#</th>
         <th>Title</th>
         <th>Slug</th>
+        <th>Author</th>
         <th>Status</th>
         <th>Created</th>
         <th>Actions</th>
@@ -22,7 +23,7 @@
     <tbody>
       {% if posts.is_empty() %}
       <tr>
-        <td colspan="6" class="empty">No posts yet. <a href="/admin/posts/new">Create one!</a></td>
+        <td colspan="7" class="empty">No posts yet. <a href="/admin/posts/new">Create one!</a></td>
       </tr>
       {% else %}
       {% for post in posts %}
@@ -30,6 +31,13 @@
         <td style="color:#9ca3af;font-size:.85rem">{{ post.id }}</td>
         <td><strong>{{ post.title }}</strong></td>
         <td style="color:#6b7280;font-size:.85rem">{{ post.slug }}</td>
+        <td style="font-size:.85rem">
+          {% if let Some(username) = &post.author_username %}
+          {{ username }}
+          {% else %}
+          <span style="color:#9ca3af">—</span>
+          {% endif %}
+        </td>
         <td>
           {% if post.published %}
           <span class="badge published">Published</span>
