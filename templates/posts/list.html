@@ -21,7 +21,7 @@ h1 { color: #2d5f3e; }
   {% else %}
   {% for post in posts %}
   <div class="post">
-    <h2><a href="/posts/{{ post.id }}">{{ post.title }}</a></h2>
+    <h2><a href="/posts/{% if post_url_type == "id" %}{{ post.id }}{% else %}{{ post.slug }}{% endif %}">{{ post.title }}</a></h2>
     <p class="meta">{{ post.created_at.format("%Y-%m-%d") }}</p>
     {% if let Some(excerpt) = &post.excerpt %}
     <p>{{ excerpt }}</p>

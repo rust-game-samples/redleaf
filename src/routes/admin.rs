@@ -13,6 +13,7 @@ use crate::{
     db::DbPool,
     models::{
         Post,
+        Setting,
         post::{CreatePost, UpdatePost},
         user::{CreateUser, LoginUser},
         User,
@@ -34,6 +35,15 @@ struct RegisterTemplate {
     error: Option<String>,
     prefill_username: String,
     prefill_email: String,
+}
+
+// ─── Settings template ───────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/settings.html")]
+struct SettingsTemplate {
+    post_url_type: String,
+    saved: Option<String>,
 }
 
 // ─── Template structs ────────────────────────────────────────────────────────
@@ -122,6 +132,7 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/posts/{id}/edit", get(edit_post_form))
         .route("/posts/{id}/delete", post(delete_post))
         .route("/posts/{id}/toggle", post(toggle_published))
+        .route("/settings", get(settings_page).post(settings_save))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -381,4 +392,35 @@ async fn toggle_published(State(pool): State<DbPool>, Path(id): Path<i64>) -> Re
         }
     }
     Redirect::to("/admin/posts")
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct SettingsForm {
+    post_url_type: Option<String>,
+}
+
+async fn settings_page(State(pool): State<DbPool>) -> Response {
+    let post_url_type = Setting::post_url_type(&pool).await;
+    render(SettingsTemplate { post_url_type, saved: None })
+}
+
+async fn settings_save(
+    State(pool): State<DbPool>,
+    Form(form): Form<SettingsForm>,
+) -> Response {
+    let url_type = match form.post_url_type.as_deref() {
+        Some("id") => "id",
+        _ => "slug",
+    };
+
+    if let Err(e) = Setting::set(&pool, "post_url_type", url_type).await {
+        tracing::error!("Failed to save settings: {}", e);
+    }
+
+    render(SettingsTemplate {
+        post_url_type: url_type.to_string(),
+        saved: Some("Settings saved.".to_string()),
+    })
 }

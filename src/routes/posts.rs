@@ -7,12 +7,13 @@ use axum::{
     Router,
 };
 
-use crate::{db::DbPool, models::Post, util::render};
+use crate::{db::DbPool, models::{Post, Setting}, util::render};
 
 #[derive(Template)]
 #[template(path = "posts/list.html")]
 struct PostListTemplate {
     posts: Vec<Post>,
+    post_url_type: String,
 }
 
 #[derive(Template)]
@@ -25,12 +26,16 @@ struct PostShowTemplate {
 pub fn post_routes() -> Router<DbPool> {
     Router::new()
         .route("/", get(list_posts))
-        .route("/{id}", get(show_post))
+        .route("/{param}", get(show_post))
 }
 
 async fn list_posts(State(pool): State<DbPool>) -> Response {
-    match Post::find_all(&pool).await {
-        Ok(posts) => render(PostListTemplate { posts }),
+    let (posts, post_url_type) = tokio::join!(
+        Post::find_all(&pool),
+        Setting::post_url_type(&pool),
+    );
+    match posts {
+        Ok(posts) => render(PostListTemplate { posts, post_url_type }),
         Err(e) => {
             tracing::error!("Failed to fetch posts: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Error loading posts").into_response()
@@ -38,15 +43,26 @@ async fn list_posts(State(pool): State<DbPool>) -> Response {
     }
 }
 
-async fn show_post(State(pool): State<DbPool>, Path(id): Path<i64>) -> Response {
-    match Post::find_by_id(&pool, id).await {
+async fn show_post(State(pool): State<DbPool>, Path(param): Path<String>) -> Response {
+    let url_type = Setting::post_url_type(&pool).await;
+
+    let result = if url_type == "id" {
+        match param.parse::<i64>() {
+            Ok(id) => Post::find_by_id(&pool, id).await,
+            Err(_) => return (StatusCode::NOT_FOUND, "Post not found").into_response(),
+        }
+    } else {
+        Post::find_by_slug(&pool, &param).await
+    };
+
+    match result {
         Ok(Some(post)) => {
             let html_content = markdown_to_html(&post.content);
             render(PostShowTemplate { post, html_content })
         }
         Ok(None) => (StatusCode::NOT_FOUND, "Post not found").into_response(),
         Err(e) => {
-            tracing::error!("Failed to fetch post {}: {}", id, e);
+            tracing::error!("Failed to fetch post {}: {}", param, e);
             (StatusCode::INTERNAL_SERVER_ERROR, "Error loading post").into_response()
         }
     }

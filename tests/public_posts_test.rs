@@ -63,7 +63,7 @@ async fn single_post_renders_markdown() {
     )
     .await;
 
-    let (status, body) = common::get(&app, "/posts/1", None).await;
+    let (status, body) = common::get(&app, "/posts/markdown-post", None).await;
     assert_eq!(status, 200);
     assert!(body.contains("<h2>Hello</h2>"), "should render Markdown headings as HTML");
     assert!(body.contains("<strong>bold</strong>"), "should render bold text");
@@ -73,7 +73,7 @@ async fn single_post_renders_markdown() {
 #[tokio::test]
 async fn single_post_not_found_returns_404() {
     let app = common::setup_app().await;
-    let (status, _) = common::get(&app, "/posts/9999", None).await;
+    let (status, _) = common::get(&app, "/posts/no-such-slug", None).await;
     assert_eq!(status, 404);
 }
 
