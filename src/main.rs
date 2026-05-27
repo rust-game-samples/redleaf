@@ -1,22 +1,8 @@
-use axum::{
-    Router,
-    middleware as axum_middleware,
-    routing::get,
-};
 use std::net::SocketAddr;
-use tower_http::{services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-mod auth;
-mod db;
-mod middleware;
-mod models;
-mod routes;
-mod util;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Initialize tracing
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -25,34 +11,18 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Load environment variables
     dotenvy::dotenv().ok();
 
-    // Initialize database
-    let db_pool = db::init_db().await?;
+    let pool = redleaf::db::init_db().await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
 
-    // Run migrations
-    sqlx::migrate!("./migrations")
-        .run(&db_pool)
-        .await?;
+    let app = redleaf::build_app(pool);
 
-    // Build application routes
-    let protected_admin = routes::admin_routes()
-        .layer(axum_middleware::from_fn(middleware::require_auth));
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr: SocketAddr = format!("{host}:{port}").parse()?;
 
-    let app = Router::new()
-        .route("/", get(routes::index))
-        .nest("/posts", routes::post_routes())
-        .nest("/admin", protected_admin)
-        .nest("/auth", routes::auth_routes())
-        .nest_service("/static", ServeDir::new("static"))
-        .layer(TraceLayer::new_for_http())
-        .with_state(db_pool);
-
-    // Start server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     tracing::info!("🌿 RedLeaf CMS listening on {}", addr);
-
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 

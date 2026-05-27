@@ -42,6 +42,10 @@ pulldown-cmark = "0.13.0"
 anyhow = "1"
 thiserror = "2.0.17"
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
 [profile.release]
 opt-level = 3
 lto = true

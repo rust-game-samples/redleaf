@@ -89,6 +89,16 @@
 
 ---
 
+#### テスト
+
+- [x] `src/lib.rs` 追加（`build_app(pool)` を公開し統合テストからインポート可能に）
+- [x] `tests/common/mod.rs` — セットアップ・リクエストヘルパー（in-memory SQLite + migration）
+- [x] `tests/auth_test.rs` — 6テスト（登録・重複・ログイン・誤パスワード・未登録）
+- [x] `tests/admin_posts_test.rs` — 12テスト（認証必須・CRUD・toggle・削除・スラッグ重複エラー）
+- [x] `tests/public_posts_test.rs` — 6テスト（ホーム・一覧・Markdownレンダリング・404・excerpt）
+
+---
+
 ### 優先度: 中（フェーズ 2）
 
 #### 投稿スラッグ URL 対応
