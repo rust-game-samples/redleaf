@@ -23,49 +23,49 @@ WordPress に近づけるための機能追加タスク。
 
 ---
 
-## フェーズ 1 — コンテンツ拡張 🔴 高優先度
+## フェーズ 1 — コンテンツ拡張 ✅ 完了
 
 ### 固定ページ (Pages)
 
-- [ ] `pages` テーブル追加（投稿とは別エンティティ: title / slug / content / template / status）
-- [ ] `GET /[slug]` — 固定ページの公開表示
-- [ ] 管理画面: 固定ページ一覧 (`/admin/pages`)
-- [ ] 管理画面: 固定ページ作成・編集・削除フォーム
-- [ ] 固定ページの親子階層 (`parent_id` カラム)
+- [x] `pages` テーブル追加（投稿とは別エンティティ: title / slug / content / template / status）
+- [x] `GET /[slug]` — 固定ページの公開表示
+- [x] 管理画面: 固定ページ一覧 (`/admin/pages`)
+- [x] 管理画面: 固定ページ作成・編集・削除フォーム
+- [x] 固定ページの親子階層 (`parent_id` カラム)
 - [ ] フロントページ設定（ホームページに固定ページを表示するオプション）
 
 ### アイキャッチ画像 (Featured Image)
 
-- [ ] `posts.featured_image_id` カラム追加（`media` テーブルへの外部キー）
-- [ ] 投稿フォームにアイキャッチ画像選択 UI 追加（メディアライブラリから選択）
-- [ ] 投稿一覧・投稿詳細テンプレートにアイキャッチ画像表示
-- [ ] OGP `og:image` にアイキャッチ画像を自動設定
+- [x] `posts.featured_image_id` カラム追加（`media` テーブルへの外部キー）
+- [x] 投稿フォームにアイキャッチ画像選択 UI 追加（メディアライブラリから選択）
+- [x] 投稿一覧・投稿詳細テンプレートにアイキャッチ画像表示
+- [x] OGP `og:image` にアイキャッチ画像を自動設定
 
 ### カスタムフィールド (Post Meta)
 
-- [ ] `post_meta` テーブル追加（`post_id` / `key` / `value` KV ストア）
-- [ ] 管理画面: 投稿フォームにカスタムフィールド追加・編集 UI
-- [ ] `PostMeta::get(post_id, key)` / `set` / `delete` モデルメソッド
+- [x] `post_meta` テーブル追加（`post_id` / `key` / `value` KV ストア）
+- [x] 管理画面: 投稿フォームにカスタムフィールド追加・編集 UI
+- [x] `PostMeta::get(post_id, key)` / `set` / `delete` モデルメソッド
 - [ ] REST API でカスタムフィールドを返す (`meta` フィールド)
 
 ### 投稿スケジュール (Scheduled Posts)
 
-- [ ] `posts.scheduled_at` カラム追加
-- [ ] 投稿ステータスに `scheduled` を追加（`published=false + scheduled_at IS NOT NULL`）
-- [ ] バックグラウンドタスク: 予約時刻を過ぎた投稿を自動公開
-- [ ] 管理画面フォームに日時ピッカーで公開予約 UI 追加
+- [x] `posts.scheduled_at` カラム追加
+- [x] 投稿ステータスに `scheduled` を追加（`published=false + scheduled_at IS NOT NULL`）
+- [x] バックグラウンドタスク: 予約時刻を過ぎた投稿を自動公開
+- [x] 管理画面フォームに日時ピッカーで公開予約 UI 追加
 
 ### 投稿リビジョン (Post Revisions)
 
-- [ ] `post_revisions` テーブル追加（`post_id` / `title` / `content` / `created_at` / `created_by`）
-- [ ] 投稿更新時に自動でリビジョン保存（最大 10 件保持）
-- [ ] 管理画面: リビジョン一覧・差分表示・ロールバック機能
+- [x] `post_revisions` テーブル追加（`post_id` / `title` / `content` / `created_at` / `created_by`）
+- [x] 投稿更新時に自動でリビジョン保存（最大 10 件保持）
+- [x] 管理画面: リビジョン一覧・ロールバック機能
 
 ### スティッキー投稿 (Sticky Posts)
 
-- [ ] `posts.sticky` カラム追加（boolean）
-- [ ] 公開一覧でスティッキー投稿を先頭に固定表示
-- [ ] 管理画面: 投稿フォームにスティッキー切り替えチェックボックス
+- [x] `posts.sticky` カラム追加（boolean）
+- [x] 公開一覧でスティッキー投稿を先頭に固定表示
+- [x] 管理画面: 投稿フォームにスティッキー切り替えチェックボックス
 
 ---
 

@@ -16,6 +16,20 @@ async fn main() -> anyhow::Result<()> {
     let pool = redleaf::db::init_db().await?;
     sqlx::migrate!("./migrations").run(&pool).await?;
 
+    // Background task: auto-publish scheduled posts every 60 seconds
+    let scheduler_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            match redleaf::models::Post::publish_scheduled(&scheduler_pool).await {
+                Ok(n) if n > 0 => tracing::info!("Scheduled: published {} post(s)", n),
+                Err(e) => tracing::error!("Scheduler error: {}", e),
+                _ => {}
+            }
+        }
+    });
+
     let app = redleaf::build_app(pool);
 
     let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());

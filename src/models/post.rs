@@ -12,13 +12,22 @@ pub struct Post {
     pub content: String,
     pub excerpt: Option<String>,
     pub published: bool,
+    pub sticky: bool,
     pub author_id: Option<i64>,
     pub category_id: Option<i64>,
+    pub featured_image_id: Option<i64>,
+    pub scheduled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-/// Post with joined author + category names.
+impl Post {
+    pub fn is_scheduled(&self) -> bool {
+        !self.published && self.scheduled_at.is_some()
+    }
+}
+
+/// Post with joined author + category + featured image.
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct PostWithAuthor {
     pub id: i64,
@@ -27,13 +36,17 @@ pub struct PostWithAuthor {
     pub content: String,
     pub excerpt: Option<String>,
     pub published: bool,
+    pub sticky: bool,
     pub author_id: Option<i64>,
     pub category_id: Option<i64>,
+    pub featured_image_id: Option<i64>,
+    pub scheduled_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub author_username: Option<String>,
     pub category_name: Option<String>,
     pub category_slug: Option<String>,
+    pub featured_image_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,8 +56,12 @@ pub struct CreatePost {
     pub content: String,
     pub excerpt: Option<String>,
     pub published: bool,
+    #[serde(default)]
+    pub sticky: bool,
     pub author_id: Option<i64>,
     pub category_id: Option<i64>,
+    pub featured_image_id: Option<i64>,
+    pub scheduled_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,8 +72,11 @@ pub struct UpdatePost {
     /// None = keep existing, Some(None) = clear, Some(Some(s)) = set
     pub excerpt: Option<Option<String>>,
     pub published: Option<bool>,
+    pub sticky: Option<bool>,
     /// None = keep existing, Some(None) = clear, Some(Some(id)) = set
     pub category_id: Option<Option<i64>>,
+    pub featured_image_id: Option<Option<i64>>,
+    pub scheduled_at: Option<Option<DateTime<Utc>>>,
 }
 
 // ─── Base query fragment ──────────────────────────────────────────────────────
@@ -65,10 +85,12 @@ const WITH_AUTHOR_SELECT: &str = r#"
     SELECT p.*,
         u.username AS author_username,
         c.name     AS category_name,
-        c.slug     AS category_slug
+        c.slug     AS category_slug,
+        m.url      AS featured_image_url
     FROM posts p
     LEFT JOIN users      u ON u.id = p.author_id
     LEFT JOIN categories c ON c.id = p.category_id
+    LEFT JOIN media      m ON m.id = p.featured_image_id
 "#;
 
 impl Post {
@@ -76,10 +98,24 @@ impl Post {
 
     pub async fn find_all(pool: &DbPool) -> Result<Vec<Post>, sqlx::Error> {
         sqlx::query_as::<_, Post>(
-            "SELECT * FROM posts WHERE published = 1 ORDER BY created_at DESC",
+            "SELECT * FROM posts WHERE published = 1 ORDER BY sticky DESC, created_at DESC",
         )
         .fetch_all(pool)
         .await
+    }
+
+    pub async fn find_recent_with_author(
+        pool: &DbPool,
+        limit: i64,
+    ) -> Result<Vec<PostWithAuthor>, sqlx::Error> {
+        let sql = format!(
+            "{} WHERE p.published = 1 ORDER BY p.sticky DESC, p.created_at DESC LIMIT ?",
+            WITH_AUTHOR_SELECT
+        );
+        sqlx::query_as::<_, PostWithAuthor>(&sql)
+            .bind(limit)
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn find_published_paginated(
@@ -89,7 +125,7 @@ impl Post {
     ) -> Result<Vec<Post>, sqlx::Error> {
         let offset = (page - 1) * per_page;
         sqlx::query_as::<_, Post>(
-            "SELECT * FROM posts WHERE published = 1 ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            "SELECT * FROM posts WHERE published = 1 ORDER BY sticky DESC, created_at DESC LIMIT ? OFFSET ?",
         )
         .bind(per_page)
         .bind(offset)
@@ -314,8 +350,10 @@ impl Post {
         let now = Utc::now();
         sqlx::query_as::<_, Post>(
             r#"
-            INSERT INTO posts (title, slug, content, excerpt, published, author_id, category_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO posts
+                (title, slug, content, excerpt, published, sticky,
+                 author_id, category_id, featured_image_id, scheduled_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING *
             "#,
         )
@@ -324,8 +362,11 @@ impl Post {
         .bind(&p.content)
         .bind(&p.excerpt)
         .bind(p.published)
+        .bind(p.sticky)
         .bind(p.author_id)
         .bind(p.category_id)
+        .bind(p.featured_image_id)
+        .bind(p.scheduled_at)
         .bind(now)
         .bind(now)
         .fetch_one(pool)
@@ -346,7 +387,8 @@ impl Post {
             r#"
             UPDATE posts
             SET title = ?, slug = ?, content = ?, excerpt = ?,
-                published = ?, category_id = ?, updated_at = ?
+                published = ?, sticky = ?, category_id = ?,
+                featured_image_id = ?, scheduled_at = ?, updated_at = ?
             WHERE id = ?
             RETURNING *
             "#,
@@ -354,15 +396,12 @@ impl Post {
         .bind(u.title.unwrap_or(cur.title))
         .bind(u.slug.unwrap_or(cur.slug))
         .bind(u.content.unwrap_or(cur.content))
-        .bind(match u.excerpt {
-            None => cur.excerpt,
-            Some(v) => v,
-        })
+        .bind(match u.excerpt { None => cur.excerpt, Some(v) => v })
         .bind(u.published.unwrap_or(cur.published))
-        .bind(match u.category_id {
-            None => cur.category_id,
-            Some(v) => v,
-        })
+        .bind(u.sticky.unwrap_or(cur.sticky))
+        .bind(match u.category_id { None => cur.category_id, Some(v) => v })
+        .bind(match u.featured_image_id { None => cur.featured_image_id, Some(v) => v })
+        .bind(match u.scheduled_at { None => cur.scheduled_at, Some(v) => v })
         .bind(now)
         .bind(id)
         .fetch_one(pool)
@@ -375,6 +414,18 @@ impl Post {
             .execute(pool)
             .await?;
         Ok(())
+    }
+
+    /// Auto-publish posts whose scheduled_at has passed.
+    pub async fn publish_scheduled(pool: &DbPool) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE posts SET published = 1, scheduled_at = NULL
+             WHERE published = 0 AND scheduled_at IS NOT NULL
+               AND scheduled_at <= datetime('now')",
+        )
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     // ─── Full-text search ─────────────────────────────────────────────────────

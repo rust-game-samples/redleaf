@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Revisions — {{ post_title }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Revisions: {{ post_title }}</h1>
+  <a href="/admin/posts/{{ post_id }}/edit" class="btn btn-secondary">← Back to Post</a>
+</div>
+<div class="card">
+  {% if revisions.is_empty() %}
+  <p style="color:#6b7280;padding:1rem 0;">No revisions saved yet.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Title</th>
+        <th>Saved</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rev in revisions %}
+      <tr>
+        <td style="color:#9ca3af;font-size:.85rem">{{ rev.id }}</td>
+        <td>
+          <strong>{{ rev.title }}</strong>
+          {% if let Some(excerpt) = &rev.excerpt %}
+          <br><small style="color:#6b7280">{{ excerpt }}</small>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap;font-size:.85rem">{{ rev.created_at.format("%Y-%m-%d %H:%M") }}</td>
+        <td>
+          <form method="post" action="/admin/posts/{{ post_id }}/revisions/{{ rev.id }}/restore"
+                onsubmit="return confirm('Restore this revision? Current content will be saved as a new revision.')">
+            <button type="submit" class="btn btn-secondary">Restore</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endblock %}

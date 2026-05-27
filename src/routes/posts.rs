@@ -84,6 +84,10 @@ async fn show_post(
     render(PostShowTemplate { post, html_content, tags, site_name })
 }
 
+pub fn markdown_to_html_pub(markdown: &str) -> String {
+    markdown_to_html(markdown)
+}
+
 fn markdown_to_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
 

@@ -2,6 +2,13 @@
 
 {% block title %}{{ post.title }} — {{ site_name }}{% endblock %}
 
+{% block head %}
+<meta property="og:title" content="{{ post.title }}">
+<meta property="og:type" content="article">
+{% if let Some(excerpt) = &post.excerpt %}<meta property="og:description" content="{{ excerpt }}">{% endif %}
+{% if let Some(img_url) = &post.featured_image_url %}<meta property="og:image" content="{{ img_url }}">{% endif %}
+{% endblock %}
+
 {% block style %}
 body { background: #f5f5f5; }
 main { max-width: 800px; margin: 0 auto; padding: 2rem; }
@@ -28,6 +35,9 @@ main { max-width: 800px; margin: 0 auto; padding: 2rem; }
 <main>
   <div class="back"><a href="/posts">← Back to all posts</a></div>
   <article class="post">
+    {% if let Some(img_url) = &post.featured_image_url %}
+    <img src="{{ img_url }}" alt="{{ post.title }}" style="width:100%;max-height:360px;object-fit:cover;border-radius:6px 6px 0 0;margin-bottom:1.5rem;">
+    {% endif %}
     <h1>{{ post.title }}</h1>
     <p class="meta">
       {{ post.created_at.format("%Y-%m-%d") }}

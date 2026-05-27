@@ -21,6 +21,7 @@ pub fn build_app(pool: db::DbPool) -> Router {
         .route("/health", get(routes::health))
         .route("/search", get(routes::search_page))
         .route("/setup", get(routes::setup_page).post(routes::setup_submit))
+        .route("/pages/{slug}", get(routes::show_page))
         .nest("/posts", routes::post_routes())
         .merge(routes::taxonomy_routes())
         .nest("/admin", protected_admin)

@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-    extract::{Form, Query, State},
+    extract::{Form, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
 };
@@ -10,7 +10,7 @@ use crate::{
     auth::generate_token,
     db::DbPool,
     errors::AppError,
-    models::{Post, Setting, User, user::CreateUser},
+    models::{Page, Post, PostWithAuthor, Setting, User, user::CreateUser},
     util::{build_fts_query, render},
 };
 
@@ -31,7 +31,7 @@ pub use taxonomy::taxonomy_routes;
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
-    posts: Vec<Post>,
+    posts: Vec<PostWithAuthor>,
     post_url_type: String,
     site_name: String,
     site_description: String,
@@ -57,7 +57,7 @@ struct SetupTemplate {
 
 pub async fn index(State(pool): State<DbPool>) -> Result<Response, AppError> {
     let (posts, post_url_type, site_name, site_description, logo_url) = tokio::join!(
-        Post::find_all(&pool),
+        Post::find_recent_with_author(&pool, 10),
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
         Setting::site_description(&pool),
@@ -105,6 +105,30 @@ pub async fn search_page(
         post_url_type,
         site_name,
     })
+}
+
+// ─── Static page ──────────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "pages/show.html")]
+struct PageShowTemplate {
+    page: Page,
+    site_name: String,
+    html_content: String,
+}
+
+pub async fn show_page(
+    State(pool): State<DbPool>,
+    Path(slug): Path<String>,
+) -> Result<Response, AppError> {
+    use crate::routes::posts::markdown_to_html_pub;
+    let (page, site_name) = tokio::join!(
+        Page::find_by_slug(&pool, &slug),
+        Setting::site_name(&pool),
+    );
+    let page = page?.ok_or(AppError::NotFound)?;
+    let html_content = markdown_to_html_pub(&page.content);
+    render(PageShowTemplate { page, site_name, html_content })
 }
 
 // ─── Setup wizard ─────────────────────────────────────────────────────────────

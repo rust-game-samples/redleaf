@@ -1,0 +1,57 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Pages{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Pages</h1>
+  <a href="/admin/pages/new" class="btn btn-primary">New Page</a>
+</div>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Title</th>
+        <th>Slug</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if pages.is_empty() %}
+      <tr>
+        <td colspan="6" class="empty">No pages yet. <a href="/admin/pages/new">Create one!</a></td>
+      </tr>
+      {% else %}
+      {% for page in pages %}
+      <tr>
+        <td style="color:#9ca3af;font-size:.85rem">{{ page.id }}</td>
+        <td><strong>{{ page.title }}</strong></td>
+        <td style="color:#6b7280;font-size:.85rem">{{ page.slug }}</td>
+        <td>
+          {% if page.status == "published" %}
+          <span class="badge published">Published</span>
+          {% else %}
+          <span class="badge draft">Draft</span>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap;font-size:.85rem">{{ page.created_at.format("%Y-%m-%d") }}</td>
+        <td>
+          <div class="acts">
+            <a href="/pages/{{ page.slug }}" class="btn btn-secondary" target="_blank">View</a>
+            <a href="/admin/pages/{{ page.id }}/edit" class="btn btn-secondary">Edit</a>
+            <form method="post" action="/admin/pages/{{ page.id }}/delete"
+                  onsubmit="return confirm('Delete this page?')">
+              <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

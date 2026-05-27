@@ -5,7 +5,12 @@
 {% block content %}
 <div class="page-header">
   <h1>{{ heading }}</h1>
-  <a href="/admin/posts" class="btn btn-secondary">← Back to Posts</a>
+  <div style="display:flex;gap:.5rem;">
+    {% if let Some(pid) = post_id %}
+    <a href="/admin/posts/{{ pid }}/revisions" class="btn btn-secondary">Revisions</a>
+    {% endif %}
+    <a href="/admin/posts" class="btn btn-secondary">← Back to Posts</a>
+  </div>
 </div>
 <div class="card">
   {% if let Some(err) = &error %}
@@ -47,13 +52,76 @@
       <label for="content">Content (Markdown) <span style="color:#dc2626">*</span></label>
       <textarea id="content" name="content" class="content-field" required>{{ content }}</textarea>
     </div>
-    <div class="form-group">
-      <div class="check-group">
-        <input type="checkbox" id="published" name="published" {% if published %}checked{% endif %}>
-        <label for="published">Publish immediately</label>
+
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:1.5rem 0;">
+    <h3 style="margin:0 0 1rem;font-size:1rem;color:#374151;">Featured Image</h3>
+    {% if let Some(img_url) = &featured_image_url %}
+    <div id="featured-preview" style="margin-bottom:.75rem;">
+      <img src="{{ img_url }}" alt="Featured" style="max-width:200px;max-height:120px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb;">
+    </div>
+    {% else %}
+    <div id="featured-preview" style="margin-bottom:.75rem;display:none;">
+      <img id="preview-img" src="" alt="Featured" style="max-width:200px;max-height:120px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb;">
+    </div>
+    {% endif %}
+    <input type="hidden" id="featured_image_id" name="featured_image_id"
+           value="{% if let Some(fid) = featured_image_id %}{{ fid }}{% endif %}">
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;max-height:200px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:4px;padding:.5rem;background:#fafafa;">
+      <label style="display:flex;align-items:center;justify-content:center;width:80px;height:60px;border:2px dashed #d1d5db;border-radius:4px;cursor:pointer;font-size:.75rem;color:#9ca3af;"
+             onclick="clearFeatured()">None</label>
+      {% for img in media_images %}
+      <img src="{{ img.url }}" alt="{{ img.original_name }}"
+           style="width:80px;height:60px;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;{% if let Some(fid) = featured_image_id %}{% if *fid == img.id %}border-color:#2d5f3e;{% endif %}{% endif %}"
+           onclick="selectFeatured({{ img.id }}, '{{ img.url }}', this)" title="{{ img.original_name }}">
+      {% endfor %}
+      {% if media_images.is_empty() %}
+      <span style="color:#9ca3af;font-size:.85rem;padding:.5rem;">No images uploaded yet. <a href="/admin/media">Upload media</a></span>
+      {% endif %}
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:1.5rem 0;">
+    <div style="display:flex;gap:2rem;flex-wrap:wrap;">
+      <div class="form-group" style="flex:0 0 auto;">
+        <div class="check-group">
+          <input type="checkbox" id="published" name="published" {% if published %}checked{% endif %}>
+          <label for="published">Publish immediately</label>
+        </div>
+      </div>
+      <div class="form-group" style="flex:0 0 auto;">
+        <div class="check-group">
+          <input type="checkbox" id="sticky" name="sticky" {% if sticky %}checked{% endif %}>
+          <label for="sticky">Sticky (pin to top)</label>
+        </div>
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">Save Post</button>
+    <div class="form-group" style="max-width:280px;">
+      <label for="scheduled_at">Schedule Publish</label>
+      <input type="datetime-local" id="scheduled_at" name="scheduled_at"
+             value="{{ scheduled_at }}"
+             style="padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-family:inherit;font-size:.95rem;width:100%;">
+      <small style="color:#6b7280;display:block;margin-top:.3rem;">Leave blank to publish manually.</small>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:1.5rem 0;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+      <h3 style="margin:0;font-size:1rem;color:#374151;">Custom Fields</h3>
+      <button type="button" onclick="addMetaRow()" class="btn btn-secondary" style="font-size:.8rem;padding:.25rem .6rem;">+ Add Field</button>
+    </div>
+    <div id="meta-rows">
+      {% for (k, v) in meta_fields %}
+      <div class="meta-row" style="display:flex;gap:.5rem;margin-bottom:.5rem;align-items:center;">
+        <input type="text" name="meta_key[]" value="{{ k }}" placeholder="Key"
+               style="flex:1;padding:.4rem .6rem;border:1px solid #d1d5db;border-radius:4px;font-size:.9rem;font-family:inherit;">
+        <input type="text" name="meta_value[]" value="{{ v }}" placeholder="Value"
+               style="flex:2;padding:.4rem .6rem;border:1px solid #d1d5db;border-radius:4px;font-size:.9rem;font-family:inherit;">
+        <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1.1rem;padding:.2rem .4rem;" title="Remove">×</button>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:1.5rem;">
+      <button type="submit" class="btn btn-primary">Save Post</button>
+    </div>
   </form>
 </div>
 <script>
@@ -69,5 +137,40 @@
         .replace(/\s+/g, '-');
     }
   });
+
+  function selectFeatured(id, url, el) {
+    document.getElementById('featured_image_id').value = id;
+    const preview = document.getElementById('featured-preview');
+    let img = preview.querySelector('img');
+    if (!img) {
+      img = document.createElement('img');
+      img.style.cssText = 'max-width:200px;max-height:120px;object-fit:cover;border-radius:4px;border:1px solid #e5e7eb;';
+      preview.appendChild(img);
+    }
+    img.src = url;
+    preview.style.display = '';
+    document.querySelectorAll('[onclick^="selectFeatured"]').forEach(i => i.style.borderColor = 'transparent');
+    el.style.borderColor = '#2d5f3e';
+  }
+
+  function clearFeatured() {
+    document.getElementById('featured_image_id').value = '';
+    document.getElementById('featured-preview').style.display = 'none';
+    document.querySelectorAll('[onclick^="selectFeatured"]').forEach(i => i.style.borderColor = 'transparent');
+  }
+
+  function addMetaRow() {
+    const row = document.createElement('div');
+    row.className = 'meta-row';
+    row.style.cssText = 'display:flex;gap:.5rem;margin-bottom:.5rem;align-items:center;';
+    row.innerHTML = `
+      <input type="text" name="meta_key[]" placeholder="Key"
+             style="flex:1;padding:.4rem .6rem;border:1px solid #d1d5db;border-radius:4px;font-size:.9rem;font-family:inherit;">
+      <input type="text" name="meta_value[]" placeholder="Value"
+             style="flex:2;padding:.4rem .6rem;border:1px solid #d1d5db;border-radius:4px;font-size:.9rem;font-family:inherit;">
+      <button type="button" onclick="this.parentElement.remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1.1rem;padding:.2rem .4rem;" title="Remove">×</button>
+    `;
+    document.getElementById('meta-rows').appendChild(row);
+  }
 </script>
 {% endblock %}

@@ -15,7 +15,10 @@ use crate::{
     models::{
         Category, CategoryWithCount,
         Media,
+        Page, CreatePage, UpdatePage,
         Post, PostWithAuthor,
+        PostMeta,
+        PostRevision,
         Setting,
         Tag, TagWithCount,
         post::{CreatePost, UpdatePost},
@@ -79,6 +82,38 @@ struct TagListTemplate {
     tags: Vec<TagWithCount>,
 }
 
+// ─── Page templates ──────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/pages/list.html")]
+struct PageListTemplate {
+    pages: Vec<Page>,
+}
+
+#[derive(Template)]
+#[template(path = "admin/pages/form.html")]
+struct PageFormTemplate {
+    heading: String,
+    action: String,
+    title: String,
+    slug: String,
+    content: String,
+    status: String,
+    parent_id: Option<i64>,
+    all_pages: Vec<Page>,
+    error: Option<String>,
+}
+
+// ─── Revision template ────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/posts/revisions.html")]
+struct RevisionListTemplate {
+    post_id: i64,
+    post_title: String,
+    revisions: Vec<PostRevision>,
+}
+
 // ─── Media templates ──────────────────────────────────────────────────────────
 
 #[derive(Template)]
@@ -110,15 +145,22 @@ struct PostListTemplate {
 struct PostFormTemplate {
     heading: String,
     action: String,
+    post_id: Option<i64>,
     title: String,
     slug: String,
     content: String,
     excerpt: String,
     published: bool,
+    sticky: bool,
+    scheduled_at: String,
     error: Option<String>,
     categories: Vec<Category>,
     selected_category_id: Option<i64>,
     tag_names: String,
+    media_images: Vec<Media>,
+    featured_image_id: Option<i64>,
+    featured_image_url: Option<String>,
+    meta_fields: Vec<(String, String)>,
 }
 
 impl PostFormTemplate {
@@ -126,15 +168,22 @@ impl PostFormTemplate {
         Self {
             heading: heading.into(),
             action: action.into(),
+            post_id: None,
             title: String::new(),
             slug: String::new(),
             content: String::new(),
             excerpt: String::new(),
             published: false,
+            sticky: false,
+            scheduled_at: String::new(),
             error: None,
             categories: vec![],
             selected_category_id: None,
             tag_names: String::new(),
+            media_images: vec![],
+            featured_image_id: None,
+            featured_image_url: None,
+            meta_fields: vec![],
         }
     }
 
@@ -142,15 +191,24 @@ impl PostFormTemplate {
         Self {
             heading: "Edit Post".into(),
             action: format!("/admin/posts/{}", post.id),
+            post_id: Some(post.id),
             title: post.title.clone(),
             slug: post.slug.clone(),
             content: post.content.clone(),
             excerpt: post.excerpt.clone().unwrap_or_default(),
             published: post.published,
+            sticky: post.sticky,
+            scheduled_at: post.scheduled_at
+                .map(|dt| dt.format("%Y-%m-%dT%H:%M").to_string())
+                .unwrap_or_default(),
             error: None,
             categories: vec![],
             selected_category_id: post.category_id,
             tag_names: String::new(),
+            media_images: vec![],
+            featured_image_id: post.featured_image_id,
+            featured_image_url: None,
+            meta_fields: vec![],
         }
     }
 }
@@ -169,8 +227,15 @@ struct PostForm {
     content: String,
     excerpt: Option<String>,
     published: Option<String>,
+    sticky: Option<String>,
     category_id: Option<i64>,
     tags: Option<String>,
+    featured_image_id: Option<i64>,
+    scheduled_at: Option<String>,
+    #[serde(rename = "meta_key[]", default)]
+    meta_keys: Vec<String>,
+    #[serde(rename = "meta_value[]", default)]
+    meta_values: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,6 +273,13 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/media", get(list_media))
         .route("/media/upload", post(upload_media))
         .route("/media/{id}/delete", post(delete_media_handler))
+        .route("/pages", get(list_pages).post(create_page))
+        .route("/pages/new", get(new_page_form))
+        .route("/pages/{id}/edit", get(edit_page_form))
+        .route("/pages/{id}", post(update_page_handler))
+        .route("/pages/{id}/delete", post(delete_page_handler))
+        .route("/posts/{id}/revisions", get(list_revisions))
+        .route("/posts/{id}/revisions/{rev_id}/restore", post(restore_revision))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -317,21 +389,38 @@ async fn resolve_tags(pool: &DbPool, input: Option<&str>) -> Result<Vec<i64>, Ap
     Ok(ids)
 }
 
-fn form_to_create(form: PostForm) -> CreatePost {
+fn form_to_create(form: &PostForm) -> CreatePost {
     let slug = if form.slug.trim().is_empty() {
         slugify(&form.title)
     } else {
         form.slug.trim().to_string()
     };
+    let scheduled_at = form.scheduled_at
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+        .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
     CreatePost {
-        title: form.title,
+        title: form.title.clone(),
         slug,
-        content: form.content,
-        excerpt: form.excerpt.filter(|s| !s.trim().is_empty()),
+        content: form.content.clone(),
+        excerpt: form.excerpt.clone().filter(|s| !s.trim().is_empty()),
         published: form.published.is_some(),
+        sticky: form.sticky.is_some(),
         author_id: None,
         category_id: form.category_id,
+        featured_image_id: form.featured_image_id,
+        scheduled_at,
     }
+}
+
+fn meta_pairs_from_form(form: &PostForm) -> Vec<(String, String)> {
+    form.meta_keys
+        .iter()
+        .zip(form.meta_values.iter())
+        .filter(|(k, _)| !k.trim().is_empty())
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -361,9 +450,13 @@ async fn list_posts(
 }
 
 async fn new_post_form(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let categories = Category::find_all(&pool).await?;
+    let (categories, media_images) = tokio::join!(
+        Category::find_all(&pool),
+        Media::find_all(&pool),
+    );
     let mut tmpl = PostFormTemplate::new("/admin/posts", "New Post");
-    tmpl.categories = categories;
+    tmpl.categories = categories?;
+    tmpl.media_images = media_images?.into_iter().filter(|m| m.is_image()).collect();
     render(tmpl)
 }
 
@@ -372,14 +465,16 @@ async fn create_post(
     Extension(claims): Extension<Claims>,
     Form(form): Form<PostForm>,
 ) -> Result<Response, AppError> {
+    let meta_pairs = meta_pairs_from_form(&form);
     let tag_input = form.tags.clone();
-    let mut payload = form_to_create(form);
+    let mut payload = form_to_create(&form);
     payload.author_id = Some(claims.sub);
 
     match Post::create(&pool, payload).await {
         Ok(post) => {
             let tag_ids = resolve_tags(&pool, tag_input.as_deref()).await?;
             Post::set_tags(&pool, post.id, &tag_ids).await?;
+            PostMeta::replace_all(&pool, post.id, &meta_pairs).await?;
             Ok(Redirect::to("/admin/posts").into_response())
         }
         Err(e) => {
@@ -388,10 +483,13 @@ async fn create_post(
             } else {
                 return Err(AppError::Database(e));
             };
-            let categories = Category::find_all(&pool).await?;
+            let (categories, media_images) = tokio::join!(
+                Category::find_all(&pool), Media::find_all(&pool)
+            );
             let mut tmpl = PostFormTemplate::new("/admin/posts", "New Post");
             tmpl.error = Some(msg);
-            tmpl.categories = categories;
+            tmpl.categories = categories?;
+            tmpl.media_images = media_images?.into_iter().filter(|m| m.is_image()).collect();
             render(tmpl)
         }
     }
@@ -401,21 +499,31 @@ async fn edit_post_form(
     State(pool): State<DbPool>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
-    let (post_res, categories) = tokio::join!(
+    let (post_res, categories, media_images, tags_res, meta_res) = tokio::join!(
         Post::find_by_id(&pool, id),
         Category::find_all(&pool),
+        Media::find_all(&pool),
+        Tag::find_by_post(&pool, id),
+        PostMeta::get_all(&pool, id),
     );
     let post = post_res?.ok_or(AppError::NotFound)?;
-    let tags = Tag::find_by_post(&pool, id).await?;
-    let tag_names = tags.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", ");
+    let tag_names = tags_res?.iter().map(|t| t.name.as_str()).collect::<Vec<_>>().join(", ");
+    let meta_fields = meta_res?.into_iter().map(|m| (m.meta_key, m.meta_value)).collect();
+    let images: Vec<Media> = media_images?.into_iter().filter(|m| m.is_image()).collect();
+    let featured_image_url = post.featured_image_id
+        .and_then(|fid| images.iter().find(|m| m.id == fid).map(|m| m.url.clone()));
     let mut tmpl = PostFormTemplate::from_post(&post);
     tmpl.categories = categories?;
     tmpl.tag_names = tag_names;
+    tmpl.media_images = images;
+    tmpl.featured_image_url = featured_image_url;
+    tmpl.meta_fields = meta_fields;
     render(tmpl)
 }
 
 async fn update_post(
     State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<i64>,
     Form(form): Form<PostForm>,
 ) -> Result<Response, AppError> {
@@ -425,13 +533,27 @@ async fn update_post(
         form.slug.trim().to_string()
     };
 
+    // Save revision before update
+    if let Ok(Some(cur)) = Post::find_by_id(&pool, id).await {
+        PostRevision::save(&pool, id, &cur.title, &cur.content, cur.excerpt.as_deref(), Some(claims.sub)).await?;
+    }
+
+    let scheduled_at = form.scheduled_at
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
+        .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
+
     let payload = UpdatePost {
-        title: Some(form.title),
+        title: Some(form.title.clone()),
         slug: Some(slug),
-        content: Some(form.content),
-        excerpt: Some(form.excerpt.filter(|s| !s.trim().is_empty())),
+        content: Some(form.content.clone()),
+        excerpt: Some(form.excerpt.clone().filter(|s| !s.trim().is_empty())),
         published: Some(form.published.is_some()),
+        sticky: Some(form.sticky.is_some()),
         category_id: Some(form.category_id),
+        featured_image_id: Some(form.featured_image_id),
+        scheduled_at: Some(scheduled_at),
     };
 
     let post = Post::update(&pool, id, payload).await.map_err(|e| match e {
@@ -440,6 +562,7 @@ async fn update_post(
     })?;
     let tag_ids = resolve_tags(&pool, form.tags.as_deref()).await?;
     Post::set_tags(&pool, post.id, &tag_ids).await?;
+    PostMeta::replace_all(&pool, post.id, &meta_pairs_from_form(&form)).await?;
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
@@ -462,7 +585,10 @@ async fn toggle_published(
         content: None,
         excerpt: None,
         published: Some(!post.published),
+        sticky: None,
         category_id: None,
+        featured_image_id: None,
+        scheduled_at: None,
     };
     Post::update(&pool, id, payload).await?;
     Ok(Redirect::to("/admin/posts").into_response())
@@ -733,4 +859,167 @@ async fn delete_media_handler(
         tokio::fs::remove_file(&path).await.ok();
     }
     Ok(Redirect::to("/admin/media").into_response())
+}
+
+// ─── Page handlers ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct PageFormInput {
+    title: String,
+    slug: Option<String>,
+    content: String,
+    status: Option<String>,
+    parent_id: Option<i64>,
+}
+
+async fn list_pages(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let pages = Page::find_all(&pool).await?;
+    render(PageListTemplate { pages })
+}
+
+async fn new_page_form(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let all_pages = Page::find_all(&pool).await?;
+    render(PageFormTemplate {
+        heading: "New Page".into(),
+        action: "/admin/pages".into(),
+        title: String::new(),
+        slug: String::new(),
+        content: String::new(),
+        status: "draft".into(),
+        parent_id: None,
+        all_pages,
+        error: None,
+    })
+}
+
+async fn create_page(
+    State(pool): State<DbPool>,
+    Form(form): Form<PageFormInput>,
+) -> Result<Response, AppError> {
+    let slug = match form.slug.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(s) => s.trim().to_string(),
+        None => slugify(&form.title),
+    };
+    let payload = CreatePage {
+        title: form.title,
+        slug,
+        content: form.content,
+        status: form.status.unwrap_or_else(|| "draft".into()),
+        parent_id: form.parent_id,
+    };
+    match Page::create(&pool, payload).await {
+        Ok(_) => Ok(Redirect::to("/admin/pages").into_response()),
+        Err(e) => {
+            let msg = if e.to_string().contains("UNIQUE constraint failed") {
+                "Slug already exists.".to_string()
+            } else {
+                return Err(AppError::Database(e));
+            };
+            let all_pages = Page::find_all(&pool).await?;
+            render(PageFormTemplate {
+                heading: "New Page".into(),
+                action: "/admin/pages".into(),
+                title: String::new(),
+                slug: String::new(),
+                content: String::new(),
+                status: "draft".into(),
+                parent_id: None,
+                all_pages,
+                error: Some(msg),
+            })
+        }
+    }
+}
+
+async fn edit_page_form(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let (page, all_pages) = tokio::join!(Page::find_by_id(&pool, id), Page::find_all(&pool));
+    let page = page?.ok_or(AppError::NotFound)?;
+    render(PageFormTemplate {
+        heading: "Edit Page".into(),
+        action: format!("/admin/pages/{}", id),
+        title: page.title,
+        slug: page.slug,
+        content: page.content,
+        status: page.status,
+        parent_id: page.parent_id,
+        all_pages: all_pages?,
+        error: None,
+    })
+}
+
+async fn update_page_handler(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+    Form(form): Form<PageFormInput>,
+) -> Result<Response, AppError> {
+    let slug = match form.slug.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(s) => Some(s.trim().to_string()),
+        None => Some(slugify(&form.title)),
+    };
+    let payload = UpdatePage {
+        title: Some(form.title),
+        slug,
+        content: Some(form.content),
+        status: form.status,
+        parent_id: Some(form.parent_id),
+    };
+    Page::update(&pool, id, payload).await.map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        other => AppError::Database(other),
+    })?;
+    Ok(Redirect::to("/admin/pages").into_response())
+}
+
+async fn delete_page_handler(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Page::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/pages").into_response())
+}
+
+// ─── Revision handlers ────────────────────────────────────────────────────────
+
+async fn list_revisions(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let post = Post::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    let revisions = PostRevision::find_by_post(&pool, id).await?;
+    render(RevisionListTemplate {
+        post_id: id,
+        post_title: post.title,
+        revisions,
+    })
+}
+
+async fn restore_revision(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Path((post_id, rev_id)): Path<(i64, i64)>,
+) -> Result<Response, AppError> {
+    let rev = PostRevision::find_by_id(&pool, rev_id).await?.ok_or(AppError::NotFound)?;
+    // Save current state as revision before restoring
+    if let Ok(Some(cur)) = Post::find_by_id(&pool, post_id).await {
+        PostRevision::save(&pool, post_id, &cur.title, &cur.content, cur.excerpt.as_deref(), Some(claims.sub)).await?;
+    }
+    let payload = UpdatePost {
+        title: Some(rev.title),
+        slug: None,
+        content: Some(rev.content),
+        excerpt: Some(rev.excerpt),
+        published: None,
+        sticky: None,
+        category_id: None,
+        featured_image_id: None,
+        scheduled_at: None,
+    };
+    Post::update(&pool, post_id, payload).await.map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound,
+        other => AppError::Database(other),
+    })?;
+    Ok(Redirect::to(&format!("/admin/posts/{}/edit", post_id)).into_response())
 }
