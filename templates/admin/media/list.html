@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Media Library{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Media Library</h1>
+  <span style="color:#6b7280;font-size:.9rem">{{ media.len() }} file{% if media.len() != 1 %}s{% endif %}</span>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;font-size:1rem;color:#374151;font-weight:600">Upload File</h2>
+  {% if error.is_some() %}
+  <div class="alert-error" style="margin-bottom:.75rem">{{ error.as_deref().unwrap_or("") }}</div>
+  {% endif %}
+  <form method="post" action="/admin/media/upload" enctype="multipart/form-data">
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <input type="file" name="file" required
+             style="flex:1;padding:.45rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-family:inherit;font-size:.9rem">
+      <button type="submit" class="btn btn-primary">Upload</button>
+    </div>
+  </form>
+</div>
+
+{% if media.is_empty() %}
+<div class="card">
+  <p class="empty">No media files uploaded yet.</p>
+</div>
+{% else %}
+<div class="media-grid">
+  {% for m in media %}
+  <div class="media-item">
+    <div class="media-preview">
+      {% if m.is_image() %}
+      <img src="{{ m.url }}" alt="{{ m.original_name }}" loading="lazy">
+      {% else %}
+      <div class="media-icon">
+        {% if m.mime_type == "application/pdf" %}📄
+        {% else if m.mime_type.starts_with("video/") %}🎬
+        {% else if m.mime_type.starts_with("audio/") %}🎵
+        {% else %}📁
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="media-info">
+      <div class="media-name" title="{{ m.original_name }}">{{ m.original_name }}</div>
+      <div class="media-meta">{{ m.mime_type }}</div>
+      <div class="media-meta">{{ m.human_size() }} · {{ m.created_at.format("%Y-%m-%d") }}</div>
+      <div class="media-actions">
+        <button onclick="copyUrl('{{ m.url }}')" class="btn btn-secondary" type="button">Copy URL</button>
+        <form method="post" action="/admin/media/{{ m.id }}/delete" style="margin:0"
+              onsubmit="return confirm('Delete \'{{ m.original_name }}\'? This cannot be undone.')">
+          <button type="submit" class="btn btn-danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+function copyUrl(path) {
+  const url = window.location.origin + path;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = event.target;
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.background = '#d1fae5';
+    btn.style.color = '#065f46';
+    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; btn.style.color = ''; }, 1500);
+  });
+}
+</script>
+
+<style>
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 1rem; }
+.media-item { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.08); overflow: hidden; }
+.media-preview { height: 150px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.media-preview img { width: 100%; height: 100%; object-fit: cover; }
+.media-icon { font-size: 3rem; }
+.media-info { padding: .75rem; }
+.media-name { font-weight: 500; font-size: .85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: .2rem; color: #111827; }
+.media-meta { font-size: .75rem; color: #9ca3af; margin-bottom: .15rem; }
+.media-actions { display: flex; gap: .35rem; margin-top: .6rem; }
+.media-actions .btn { font-size: .78rem; padding: .28rem .65rem; }
+</style>
+{% endblock %}

@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-    extract::{Extension, Form, Path, Query, State},
+    extract::{Extension, Form, Multipart, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -14,6 +14,7 @@ use crate::{
     errors::AppError,
     models::{
         Category, CategoryWithCount,
+        Media,
         Post, PostWithAuthor,
         Setting,
         Tag, TagWithCount,
@@ -73,6 +74,15 @@ struct CategoryFormTemplate {
 #[template(path = "admin/tags/list.html")]
 struct TagListTemplate {
     tags: Vec<TagWithCount>,
+}
+
+// ─── Media templates ──────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/media/list.html")]
+struct MediaListTemplate {
+    media: Vec<Media>,
+    error: Option<String>,
 }
 
 // ─── Template structs ────────────────────────────────────────────────────────
@@ -192,6 +202,9 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/tags", get(list_tags))
         .route("/tags/{id}/delete", post(delete_tag))
         .route("/settings", get(settings_page).post(settings_save))
+        .route("/media", get(list_media))
+        .route("/media/upload", post(upload_media))
+        .route("/media/{id}/delete", post(delete_media_handler))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -588,4 +601,111 @@ async fn settings_save(
         post_url_type: url_type.to_string(),
         saved: Some("Settings saved.".to_string()),
     })
+}
+
+// ─── Media handlers ───────────────────────────────────────────────────────────
+
+const UPLOAD_DIR: &str = "static/uploads";
+
+fn generate_filename(original: &str) -> String {
+    let ext = std::path::Path::new(original)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("bin")
+        .to_lowercase();
+    let ts = chrono::Utc::now().timestamp_millis();
+    let rand: u64 = rand::random();
+    format!("{ts}_{rand:016x}.{ext}")
+}
+
+async fn list_media(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let media = Media::find_all(&pool).await?;
+    render(MediaListTemplate { media, error: None })
+}
+
+async fn upload_media(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    mut multipart: Multipart,
+) -> Result<Response, AppError> {
+    tokio::fs::create_dir_all(UPLOAD_DIR)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let mut uploaded = false;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        if field.name() != Some("file") {
+            continue;
+        }
+
+        let original_name = field
+            .file_name()
+            .unwrap_or("upload")
+            .to_string();
+        let mime_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        if bytes.is_empty() {
+            let media = Media::find_all(&pool).await?;
+            return render(MediaListTemplate {
+                media,
+                error: Some("No file was provided.".into()),
+            });
+        }
+
+        let filename = generate_filename(&original_name);
+        let path = format!("{UPLOAD_DIR}/{filename}");
+
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let url = format!("/static/uploads/{filename}");
+        Media::create(
+            &pool,
+            &filename,
+            &original_name,
+            &mime_type,
+            bytes.len() as i64,
+            &url,
+            Some(claims.sub),
+        )
+        .await?;
+
+        uploaded = true;
+        break;
+    }
+
+    if !uploaded {
+        let media = Media::find_all(&pool).await?;
+        return render(MediaListTemplate {
+            media,
+            error: Some("No file was provided.".into()),
+        });
+    }
+
+    Ok(Redirect::to("/admin/media").into_response())
+}
+
+async fn delete_media_handler(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    if let Some(media) = Media::delete(&pool, id).await? {
+        let path = format!("{UPLOAD_DIR}/{}", media.filename);
+        tokio::fs::remove_file(&path).await.ok();
+    }
+    Ok(Redirect::to("/admin/media").into_response())
 }

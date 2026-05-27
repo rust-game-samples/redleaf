@@ -146,10 +146,10 @@
 
 #### メディア管理
 
-- [ ] `media` テーブル追加
-- [ ] ファイルアップロード処理（`multipart/form-data`）
-- [ ] `./static/uploads/` への保存
-- [ ] メディアライブラリ画面
+- [x] `media` テーブル追加
+- [x] ファイルアップロード処理（`multipart/form-data`）
+- [x] `./static/uploads/` への保存
+- [x] メディアライブラリ画面
 
 #### サイト設定
 
