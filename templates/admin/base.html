@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Admin{% endblock %} — RedLeaf Admin</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f0f4f0; color: #222; }
+    nav { background: #2d5f3e; color: white; padding: .75rem 2rem; display: flex; align-items: center; gap: 1.5rem; }
+    nav a { color: white; text-decoration: none; font-weight: 500; font-size: .95rem; }
+    nav a:hover { text-decoration: underline; }
+    .logo { font-size: 1.15rem; font-weight: bold; margin-right: auto; }
+    main { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+    h1 { color: #2d5f3e; margin-top: 0; }
+    .card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.08); padding: 1.5rem; margin-bottom: 1.5rem; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .page-header h1 { margin: 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid #eee; vertical-align: middle; }
+    th { background: #f9fafb; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: .2rem .6rem; border-radius: 4px; font-size: .78rem; font-weight: 600; }
+    .published { background: #d1fae5; color: #065f46; }
+    .draft { background: #fef3c7; color: #92400e; }
+    .btn { display: inline-block; padding: .42rem .85rem; border-radius: 4px; text-decoration: none;
+           font-size: .85rem; border: none; cursor: pointer; font-family: inherit; font-weight: 500; }
+    .btn-primary { background: #2d5f3e; color: white; }
+    .btn-primary:hover { background: #234a30; }
+    .btn-secondary { background: #e5e7eb; color: #374151; }
+    .btn-secondary:hover { background: #d1d5db; }
+    .btn-danger { background: #fee2e2; color: #991b1b; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-warning { background: #fef3c7; color: #92400e; }
+    .btn-warning:hover { background: #fde68a; }
+    .acts { display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
+    .acts form { margin: 0; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.08); padding: 1.25rem 1.5rem; }
+    .stat-value { font-size: 2rem; font-weight: 700; color: #2d5f3e; }
+    .stat-label { font-size: .85rem; color: #6b7280; margin-top: .2rem; }
+    .form-group { margin-bottom: 1.2rem; }
+    label { display: block; margin-bottom: .3rem; font-weight: 500; font-size: .9rem; color: #374151; }
+    input[type=text], textarea {
+      width: 100%; padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 4px;
+      font-family: inherit; font-size: .95rem; background: white;
+    }
+    input[type=text]:focus, textarea:focus {
+      outline: none; border-color: #2d5f3e; box-shadow: 0 0 0 3px rgba(45,95,62,.12);
+    }
+    textarea.content-field { min-height: 320px; resize: vertical; font-family: ui-monospace, monospace; font-size: .88rem; }
+    .check-group { display: flex; align-items: center; gap: .5rem; }
+    .check-group input { width: auto; }
+    .check-group label { margin: 0; }
+    .empty { text-align: center; color: #9ca3af; padding: 2rem; }
+    .alert-error { background: #fee2e2; color: #991b1b; padding: .75rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="logo">🌿 RedLeaf</span>
+    <a href="/admin">Dashboard</a>
+    <a href="/admin/posts">Posts</a>
+    <a href="/admin/posts/new">New Post</a>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

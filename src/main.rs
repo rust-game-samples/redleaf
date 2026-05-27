@@ -12,6 +12,7 @@ mod db;
 mod middleware;
 mod models;
 mod routes;
+mod util;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

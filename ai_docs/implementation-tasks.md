@@ -76,15 +76,16 @@
 
 #### テンプレート移行
 
-- [ ] `templates/` ディレクトリ作成
-- [ ] Askama テンプレートへのインライン HTML 移行
-  - [ ] `base.html`（共通レイアウト）
-  - [ ] `index.html`
-  - [ ] `posts/list.html`
-  - [ ] `posts/show.html`
-  - [ ] `admin/dashboard.html`
-  - [ ] `admin/posts/*.html`
-- [ ] Askama の `askama_axum::IntoResponse` 実装
+- [x] `templates/` ディレクトリ作成（`posts/`・`admin/posts/` サブディレクトリ含む）
+- [x] `base.html`（公開ページ共通レイアウト）
+- [x] `index.html`（ホームページ）
+- [x] `posts/list.html`（投稿一覧・excerpt 表示）
+- [x] `posts/show.html`（投稿詳細・Markdown レンダリング）
+- [x] `admin/base.html`（管理ページ共通レイアウト・ナビゲーション）
+- [x] `admin/dashboard.html`（統計ダッシュボード）
+- [x] `admin/posts/list.html`（投稿一覧・バッジ・アクション）
+- [x] `admin/posts/form.html`（作成・編集共通フォーム・エラー表示・スラッグ自動生成 JS）
+- [x] `src/util.rs` に `render<T: Template>()` ヘルパー追加（askama_axum バージョン非互換を回避）
 
 ---
 
