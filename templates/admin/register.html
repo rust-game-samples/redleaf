@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login — RedLeaf Admin</title>
+  <title>Register — RedLeaf Admin</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f0f4f0; color: #222;
@@ -24,6 +24,9 @@
     .btn:hover { background: #234a30; }
     .alert { background: #fee2e2; color: #991b1b; padding: .7rem 1rem; border-radius: 5px;
              margin-bottom: 1rem; font-size: .9rem; }
+    .footer-link { text-align: center; margin-top: 1.25rem; font-size: .88rem; color: #6b7280; }
+    .footer-link a { color: #2d5f3e; text-decoration: none; font-weight: 500; }
+    .footer-link a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -31,25 +34,27 @@
     <div class="logo">
       <div class="logo-icon">🌿</div>
       <h1>RedLeaf</h1>
-      <p>Admin Panel</p>
+      <p>Create an account</p>
     </div>
     {% if let Some(err) = error %}
     <div class="alert">{{ err }}</div>
     {% endif %}
-    <form method="post" action="/admin/login">
+    <form method="post" action="/admin/register">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus value="{{ prefill_username }}">
+      </div>
       <div class="form-group">
         <label for="email">Email</label>
-        <input type="email" id="email" name="email" required autofocus>
+        <input type="email" id="email" name="email" required value="{{ prefill_email }}">
       </div>
       <div class="form-group">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" required>
+        <input type="password" id="password" name="password" required minlength="8">
       </div>
-      <button type="submit" class="btn">Sign in</button>
+      <button type="submit" class="btn">Create account</button>
     </form>
-    <p style="text-align:center;margin-top:1.25rem;font-size:.88rem;color:#6b7280;">
-      No account? <a href="/admin/register" style="color:#2d5f3e;font-weight:500;text-decoration:none;">Create one</a>
-    </p>
+    <p class="footer-link">Already have an account? <a href="/admin/login">Sign in</a></p>
   </div>
 </body>
 </html>

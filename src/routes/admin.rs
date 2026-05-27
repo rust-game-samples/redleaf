@@ -14,18 +14,26 @@ use crate::{
     models::{
         Post,
         post::{CreatePost, UpdatePost},
-        user::LoginUser,
+        user::{CreateUser, LoginUser},
         User,
     },
     util::render,
 };
 
-// ─── Login template ──────────────────────────────────────────────────────────
+// ─── Login / register templates ──────────────────────────────────────────────
 
 #[derive(Template)]
 #[template(path = "admin/login.html")]
 struct LoginTemplate {
     error: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "admin/register.html")]
+struct RegisterTemplate {
+    error: Option<String>,
+    prefill_username: String,
+    prefill_email: String,
 }
 
 // ─── Template structs ────────────────────────────────────────────────────────
@@ -101,6 +109,7 @@ struct PostForm {
 pub fn admin_login_routes() -> Router<DbPool> {
     Router::new()
         .route("/admin/login", get(login_page).post(login_submit))
+        .route("/admin/register", get(register_page).post(register_submit))
         .route("/admin/logout", post(logout))
 }
 
@@ -167,6 +176,62 @@ async fn logout() -> Response {
             header::SET_COOKIE,
             "session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0",
         )
+        .body(axum::body::Body::empty())
+        .unwrap()
+}
+
+async fn register_page() -> Response {
+    render(RegisterTemplate {
+        error: None,
+        prefill_username: String::new(),
+        prefill_email: String::new(),
+    })
+}
+
+async fn register_submit(
+    State(pool): State<DbPool>,
+    Form(payload): Form<CreateUser>,
+) -> Response {
+    let prefill_username = payload.username.clone();
+    let prefill_email = payload.email.clone();
+
+    let user = match User::create(&pool, payload).await {
+        Ok(u) => u,
+        Err(e) => {
+            let msg = if e.to_string().contains("UNIQUE constraint failed") {
+                "Username or email is already taken.".to_string()
+            } else {
+                tracing::error!("Registration error: {}", e);
+                "Internal error. Please try again.".to_string()
+            };
+            return render(RegisterTemplate {
+                error: Some(msg),
+                prefill_username,
+                prefill_email,
+            });
+        }
+    };
+
+    let token = match generate_token(&user) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("Token generation failed: {}", e);
+            return render(RegisterTemplate {
+                error: Some("Internal error. Please try again.".to_string()),
+                prefill_username,
+                prefill_email,
+            });
+        }
+    };
+
+    let cookie = format!(
+        "session={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=604800",
+        token
+    );
+    Response::builder()
+        .status(StatusCode::SEE_OTHER)
+        .header(header::LOCATION, "/admin")
+        .header(header::SET_COOKIE, cookie)
         .body(axum::body::Body::empty())
         .unwrap()
 }
