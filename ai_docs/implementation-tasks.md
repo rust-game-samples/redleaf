@@ -57,11 +57,11 @@
 
 #### JWT 認証
 
-- [ ] `User` への JWT クレーム構造体追加
-- [ ] `POST /auth/login` — ログイン → JWT 発行エンドポイント
-- [ ] `POST /auth/register` — ユーザー登録エンドポイント
-- [ ] JWT 検証ミドルウェア（`tower::Layer` で実装）
-- [ ] 管理画面ルートへの認証ミドルウェア適用
+- [x] `Claims` 構造体定義（`src/auth.rs`）
+- [x] `POST /auth/register` — ユーザー登録 → JWT 発行（201 Created）
+- [x] `POST /auth/login` — ログイン → JWT 発行（200 / 401）
+- [x] JWT 検証ミドルウェア（`src/middleware.rs`、`from_fn` で実装）
+- [x] 管理画面ルートへの認証ミドルウェア適用（`/admin` は Bearer トークン必須）
 
 #### 管理画面 CRUD
 

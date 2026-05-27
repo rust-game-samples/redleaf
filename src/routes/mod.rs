@@ -5,11 +5,13 @@ use axum::{
 
 use crate::db::DbPool;
 
-pub mod posts;
 pub mod admin;
+pub mod auth;
+pub mod posts;
 
-pub use posts::post_routes;
 pub use admin::admin_routes;
+pub use auth::auth_routes;
+pub use posts::post_routes;
 
 // Home page handler
 pub async fn index(State(_pool): State<DbPool>) -> Html<String> {

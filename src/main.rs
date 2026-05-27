@@ -1,12 +1,15 @@
 use axum::{
     Router,
+    middleware as axum_middleware,
     routing::get,
 };
 use std::net::SocketAddr;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod auth;
 mod db;
+mod middleware;
 mod models;
 mod routes;
 
@@ -33,10 +36,14 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     // Build application routes
+    let protected_admin = routes::admin_routes()
+        .layer(axum_middleware::from_fn(middleware::require_auth));
+
     let app = Router::new()
         .route("/", get(routes::index))
         .nest("/posts", routes::post_routes())
-        .nest("/admin", routes::admin_routes())
+        .nest("/admin", protected_admin)
+        .nest("/auth", routes::auth_routes())
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .with_state(db_pool);
