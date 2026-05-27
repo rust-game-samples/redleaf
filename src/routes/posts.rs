@@ -20,6 +20,7 @@ struct PostListTemplate {
     posts: Vec<Post>,
     post_url_type: String,
     paging: Pagination,
+    site_name: String,
 }
 
 #[derive(Template)]
@@ -28,6 +29,7 @@ struct PostShowTemplate {
     post: PostWithAuthor,
     html_content: String,
     tags: Vec<Tag>,
+    site_name: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -47,21 +49,25 @@ async fn list_posts(
 ) -> Result<Response, AppError> {
     let page = q.page.unwrap_or(1).max(1);
 
-    let (posts, total, post_url_type) = tokio::join!(
+    let (posts, total, post_url_type, site_name) = tokio::join!(
         Post::find_published_paginated(&pool, page, PER_PAGE),
         Post::count_published(&pool),
         Setting::post_url_type(&pool),
+        Setting::site_name(&pool),
     );
 
     let paging = Pagination::new(page, total?, PER_PAGE, "/posts");
-    render(PostListTemplate { posts: posts?, post_url_type, paging })
+    render(PostListTemplate { posts: posts?, post_url_type, paging, site_name })
 }
 
 async fn show_post(
     State(pool): State<DbPool>,
     Path(param): Path<String>,
 ) -> Result<Response, AppError> {
-    let url_type = Setting::post_url_type(&pool).await;
+    let (url_type, site_name) = tokio::join!(
+        Setting::post_url_type(&pool),
+        Setting::site_name(&pool),
+    );
 
     let post = if url_type == "id" {
         let id = param
@@ -75,7 +81,7 @@ async fn show_post(
     let post = post.ok_or(AppError::NotFound)?;
     let tags = Tag::find_by_post(&pool, post.id).await?;
     let html_content = markdown_to_html(&post.content);
-    render(PostShowTemplate { post, html_content, tags })
+    render(PostShowTemplate { post, html_content, tags, site_name })
 }
 
 fn markdown_to_html(markdown: &str) -> String {

@@ -32,4 +32,20 @@ impl Setting {
             _ => "slug".to_string(),
         }
     }
+
+    pub async fn site_name(pool: &DbPool) -> String {
+        Self::get(pool, "site_name")
+            .await
+            .unwrap_or_else(|| "RedLeaf CMS".into())
+    }
+
+    pub async fn site_description(pool: &DbPool) -> String {
+        Self::get(pool, "site_description")
+            .await
+            .unwrap_or_else(|| "A lightweight CMS built with Rust".into())
+    }
+
+    pub async fn logo_url(pool: &DbPool) -> String {
+        Self::get(pool, "logo_url").await.unwrap_or_default()
+    }
 }

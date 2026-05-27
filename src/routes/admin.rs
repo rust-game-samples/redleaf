@@ -47,6 +47,9 @@ struct RegisterTemplate {
 #[template(path = "admin/settings.html")]
 struct SettingsTemplate {
     post_url_type: String,
+    site_name: String,
+    site_description: String,
+    logo_url: String,
     saved: Option<String>,
 }
 
@@ -581,11 +584,19 @@ async fn delete_tag(
 #[derive(Debug, Deserialize)]
 struct SettingsForm {
     post_url_type: Option<String>,
+    site_name: Option<String>,
+    site_description: Option<String>,
+    logo_url: Option<String>,
 }
 
 async fn settings_page(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let post_url_type = Setting::post_url_type(&pool).await;
-    render(SettingsTemplate { post_url_type, saved: None })
+    let (post_url_type, site_name, site_description, logo_url) = tokio::join!(
+        Setting::post_url_type(&pool),
+        Setting::site_name(&pool),
+        Setting::site_description(&pool),
+        Setting::logo_url(&pool),
+    );
+    render(SettingsTemplate { post_url_type, site_name, site_description, logo_url, saved: None })
 }
 
 async fn settings_save(
@@ -596,9 +607,23 @@ async fn settings_save(
         Some("id") => "id",
         _ => "slug",
     };
-    Setting::set(&pool, "post_url_type", url_type).await?;
+    let site_name = form.site_name.as_deref().unwrap_or("").trim().to_string();
+    let site_name = if site_name.is_empty() { "RedLeaf CMS".to_string() } else { site_name };
+    let site_description = form.site_description.as_deref().unwrap_or("").trim().to_string();
+    let logo_url = form.logo_url.as_deref().unwrap_or("").trim().to_string();
+
+    tokio::try_join!(
+        Setting::set(&pool, "post_url_type", url_type),
+        Setting::set(&pool, "site_name", &site_name),
+        Setting::set(&pool, "site_description", &site_description),
+        Setting::set(&pool, "logo_url", &logo_url),
+    )?;
+
     render(SettingsTemplate {
         post_url_type: url_type.to_string(),
+        site_name,
+        site_description,
+        logo_url,
         saved: Some("Settings saved.".to_string()),
     })
 }

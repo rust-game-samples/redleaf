@@ -25,13 +25,18 @@ pub use taxonomy::taxonomy_routes;
 struct IndexTemplate {
     posts: Vec<Post>,
     post_url_type: String,
+    site_name: String,
+    site_description: String,
+    logo_url: String,
 }
 
 pub async fn index(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let (posts, post_url_type) = tokio::join!(
+    let (posts, post_url_type, site_name, site_description, logo_url) = tokio::join!(
         Post::find_all(&pool),
         Setting::post_url_type(&pool),
+        Setting::site_name(&pool),
+        Setting::site_description(&pool),
+        Setting::logo_url(&pool),
     );
-    let posts = posts?;
-    render(IndexTemplate { posts, post_url_type })
+    render(IndexTemplate { posts: posts?, post_url_type, site_name, site_description, logo_url })
 }
