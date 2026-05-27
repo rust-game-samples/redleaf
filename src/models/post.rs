@@ -376,4 +376,21 @@ impl Post {
             .await?;
         Ok(())
     }
+
+    // ─── Full-text search ─────────────────────────────────────────────────────
+
+    pub async fn search(pool: &DbPool, fts_query: &str) -> Result<Vec<Post>, sqlx::Error> {
+        sqlx::query_as::<_, Post>(
+            r#"
+            SELECT p.* FROM posts p
+            JOIN posts_fts ON posts_fts.rowid = p.id
+            WHERE posts_fts MATCH ? AND p.published = 1
+            ORDER BY rank
+            LIMIT 30
+            "#,
+        )
+        .bind(fts_query)
+        .fetch_all(pool)
+        .await
+    }
 }

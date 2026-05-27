@@ -159,10 +159,10 @@
 
 #### システム
 
-- [ ] Dockerfile 作成
-- [ ] ヘルスチェックエンドポイント (`GET /health`)
-- [ ] ページ全文検索（SQLite FTS5）
-- [ ] GUI インストーラー
+- [x] Dockerfile 作成
+- [x] ヘルスチェックエンドポイント (`GET /health`)
+- [x] ページ全文検索（SQLite FTS5）
+- [x] GUI インストーラー（Web ベースセットアップウィザード）
 
 ---
 

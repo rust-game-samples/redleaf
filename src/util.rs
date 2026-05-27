@@ -33,6 +33,21 @@ pub struct Pagination {
     pub base_url: String,
 }
 
+/// Sanitizes user input into a safe FTS5 MATCH query with prefix matching.
+pub fn build_fts_query(input: &str) -> String {
+    input
+        .split_whitespace()
+        .filter_map(|word| {
+            let clean: String = word
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == '-')
+                .collect();
+            if clean.is_empty() { None } else { Some(format!("{clean}*")) }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 impl Pagination {
     pub fn new(page: i64, total: i64, per_page: i64, base_url: impl Into<String>) -> Self {
         let total_pages = if total == 0 { 1 } else { (total + per_page - 1) / per_page };

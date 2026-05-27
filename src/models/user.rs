@@ -108,6 +108,14 @@ impl User {
         Ok(user)
     }
 
+    pub async fn has_any(pool: &DbPool) -> bool {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users")
+            .fetch_one(pool)
+            .await
+            .map(|n| n > 0)
+            .unwrap_or(false)
+    }
+
     // Authenticate user
     pub async fn authenticate(
         pool: &DbPool,

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup — RedLeaf CMS</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: linear-gradient(135deg, #1a3d28 0%, #2d5f3e 50%, #3a7a50 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+      padding: 2.5rem 2.5rem 2rem;
+      width: 100%;
+      max-width: 420px;
+    }
+    .logo { text-align: center; font-size: 3rem; margin-bottom: .5rem; }
+    h1 { text-align: center; color: #2d5f3e; margin: 0 0 .4rem; font-size: 1.5rem; }
+    .subtitle { text-align: center; color: #6b7280; font-size: .9rem; margin: 0 0 1.75rem; }
+    .step-badge {
+      display: inline-block; background: #f0fdf4; color: #166534;
+      font-size: .75rem; font-weight: 600; padding: .2rem .65rem;
+      border-radius: 99px; border: 1px solid #bbf7d0;
+      margin-bottom: 1.25rem;
+    }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; font-size: .88rem; font-weight: 600; color: #374151; margin-bottom: .3rem; }
+    input[type=text], input[type=email], input[type=password] {
+      width: 100%; padding: .55rem .8rem;
+      border: 1.5px solid #d1d5db; border-radius: 6px;
+      font-family: inherit; font-size: .95rem;
+    }
+    input:focus { outline: none; border-color: #2d5f3e; box-shadow: 0 0 0 3px rgba(45,95,62,.12); }
+    .hint { font-size: .78rem; color: #9ca3af; margin-top: .2rem; }
+    .alert { background: #fef2f2; color: #991b1b; padding: .7rem .9rem; border-radius: 6px; font-size: .88rem; margin-bottom: 1rem; }
+    .btn {
+      width: 100%; padding: .7rem; background: #2d5f3e; color: white;
+      border: none; border-radius: 6px; font-size: 1rem; font-weight: 600;
+      cursor: pointer; font-family: inherit; margin-top: .5rem;
+    }
+    .btn:hover { background: #234a30; }
+    .footer { text-align: center; color: #9ca3af; font-size: .8rem; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🌿</div>
+    <h1>Welcome to RedLeaf CMS</h1>
+    <p class="subtitle">Create your administrator account to get started.</p>
+
+    <div style="text-align:center">
+      <span class="step-badge">Step 1 of 1 — Admin Account</span>
+    </div>
+
+    {% if let Some(err) = error %}
+    <div class="alert">{{ err }}</div>
+    {% endif %}
+
+    <form method="post" action="/setup">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autocomplete="username" placeholder="admin">
+      </div>
+      <div class="form-group">
+        <label for="email">Email address</label>
+        <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="new-password" placeholder="••••••••">
+        <p class="hint">Minimum 8 characters.</p>
+      </div>
+
+      <button type="submit" class="btn">Complete Setup →</button>
+    </form>
+
+    <p class="footer">RedLeaf CMS — Lightweight &amp; blazing-fast</p>
+  </div>
+</body>
+</html>
