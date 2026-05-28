@@ -1,102 +1,141 @@
-# RedLeaf CMS - アーキテクチャ
+# RedLeaf CMS — アーキテクチャ
+
+最終更新: 2026-05-29
 
 ## 概要
 
 RedLeaf は Rust 製の軽量 CMS。WordPress ライクなブログ管理システムを目指し、パフォーマンス・シンプルさ・API ファーストを設計方針とする。
 
+---
+
 ## レイヤー構成
 
 ```
-┌─────────────────────────────────────────┐
-│             Web Layer (routes/)          │  ← HTTP リクエスト処理・HTML 生成
-├─────────────────────────────────────────┤
-│            Model Layer (models/)         │  ← ビジネスロジック・データ構造
-├─────────────────────────────────────────┤
-│           Data Access Layer (db.rs)      │  ← SQLite 接続プール管理
-├─────────────────────────────────────────┤
-│            SQLite Database               │  ← 永続化
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  クライアント (ブラウザ / REST クライアント)                 │
+└─────────────────────────┬────────────────────────────────┘
+                          │ HTTP
+┌─────────────────────────▼────────────────────────────────┐
+│  Middleware Layer                                         │
+│  ・PageCache (Tower from_fn) — 公開 GET をキャッシュ      │
+│  ・Extension<Arc<PageCache>> — ハンドラからパージ可能      │
+│  ・require_auth (管理画面保護)                             │
+│  ・TraceLayer (アクセスログ)                               │
+│  ・ServeDir /static/* (静的ファイル直接配信)               │
+└─────────────────────────┬────────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────────┐
+│  Route Layer (routes/)                                    │
+│  ・mod.rs      公開ページ・サイトマップ・ロボット           │
+│  ・posts.rs    投稿表示 (Markdown→HTML + srcset)          │
+│  ・taxonomy.rs カテゴリ/タグアーカイブ                     │
+│  ・feed.rs     RSS 2.0 / Atom フィード                    │
+│  ・admin.rs    管理画面 全ハンドラ (2500+ 行)              │
+│  ・api.rs      REST API /api/posts                        │
+│  ・auth.rs     /auth/login, /auth/register                │
+└─────────────────────────┬────────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────────┐
+│  Model Layer (models/)                                    │
+│  ・各モデルが自身の DB 操作メソッドを保有                   │
+│  ・SQLx FromRow で SQL 結果を構造体へ直接マッピング         │
+│  ・HookRegistry (before_post_save / after_post_publish 等) │
+└─────────────────────────┬────────────────────────────────┘
+                          │ SQLx (非同期プール)
+┌─────────────────────────▼────────────────────────────────┐
+│  SQLite (redleaf.db)                                      │
+│  ・15 マイグレーション (バイナリ埋め込み・自動適用)          │
+│  ・FTS5 仮想テーブルで全文検索                              │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## 各レイヤーの責務
-
-### Web Layer (`src/routes/`)
-
-| ファイル | 担当 |
-|---|---|
-| `routes/mod.rs` | ホームページハンドラ、ルートモジュール集約 |
-| `routes/posts.rs` | 投稿一覧・個別表示、Markdown→HTML 変換 |
-| `routes/admin.rs` | 管理画面ダッシュボード（骨格のみ） |
-
-- Axum の `Router` を構築してネストされたルートグループを組む
-- `State<DbPool>` でコネクションプールをハンドラに注入
-- HTML はインライン文字列で生成（Askama は依存に含むが未使用）
-
-### Model Layer (`src/models/`)
-
-| ファイル | 担当 |
-|---|---|
-| `models/user.rs` | ユーザー認証・CRUD（Argon2 ハッシュ） |
-| `models/post.rs` | ブログ投稿の CRUD・公開制御 |
-| `models/mod.rs` | `User`・`Post` の再エクスポート |
-
-- 各モデルは自身のデータベース操作メソッドを持つ（Active Record パターンに近い）
-- SQLx の `FromRow` で SQL 結果を直接構造体へマッピング
-
-### Data Access Layer (`src/db.rs`)
-
-- `SqlitePool` の初期化のみを担当
-- 最大 5 接続のプールを生成し `main.rs` へ返す
+---
 
 ## リクエストフロー
 
-### ブログ投稿表示
+### 公開投稿ページ表示
 
 ```
-GET /posts/{id}
-  └→ show_post(Path<id>, State<DbPool>)
-       ├→ Post::find_by_id(&pool, id)
-       │    └→ SELECT * FROM posts WHERE id = ?
-       ├→ markdown_to_html(&post.content)   // pulldown-cmark
-       └→ Html レスポンス返却
+GET /posts/my-post-slug
+  → PageCache ミドルウェア
+    ├─ HIT → キャッシュから即返却 (ETag / 304 対応)
+    └─ MISS →
+         show_post(Path, State<DbPool>)
+           ├─ Post::find_by_slug_with_author(&pool, slug)
+           ├─ Tag::find_by_post(&pool, post.id)
+           ├─ Comment::find_by_post(&pool, post.id)
+           ├─ Media::find_variants(&pool, featured_image_id)   ← 画像 srcset
+           ├─ markdown_to_html(&post.content)                  ← Markdown + ショートコード展開
+           └─ Askama PostShowTemplate → HTML レスポンス
+                → キャッシュに保存 (TTL 5分)
 ```
 
-### ユーザー登録（実装中）
+### 投稿保存 (管理画面)
 
 ```
-POST /register
-  └→ CreateUser デシリアライズ
-       ├→ User::hash_password(&password)   // Argon2 + OS RNG
-       ├→ User::create(&pool, create_user)
-       │    └→ INSERT INTO users (...)
-       └→ User 返却（password_hash は serde skip）
+POST /admin/posts/{id}
+  → require_auth ミドルウェア (JWT 検証 → Claims extension)
+  → update_post(State<DbPool>, Extension<Claims>, Extension<PageCache>, Path<id>, Form<PostForm>)
+       ├─ PostRevision::save(&pool, ...)      ← 現バージョンをリビジョン保存
+       ├─ Post::update(&pool, id, payload)
+       ├─ Post::set_tags(&pool, post.id, &tag_ids)
+       ├─ PostMeta::replace_all(&pool, post.id, &pairs)
+       ├─ ActivityLog::create(&pool, ...)     ← 操作を記録
+       ├─ cache.invalidate_all()              ← ページキャッシュ全クリア
+       └─ Redirect::to("/admin/posts")
 ```
 
-## ルーティング構造
+### 画像アップロード
 
 ```
-/                  → index()          ホームページ
-/posts/            → list_posts()     投稿一覧
-/posts/{id}        → show_post()      個別投稿
-/admin/            → admin_dashboard() 管理画面
-/static/*          → ServeDir         静的ファイル配信
+POST /admin/media/upload (multipart)
+  → upload_media handler
+       ├─ tokio::fs::write(path, bytes)       ← オリジナル保存
+       ├─ Media::create(&pool, ...)           ← DB 登録
+       └─ media.is_image() == true なら:
+            tokio::task::spawn_blocking(|| {
+              image_processing::generate_variants(bytes, mime, stem)
+                → thumbnail (150×150 crop) + medium (300px) + large (1024px)
+                → 各サイズの WebP バリアント
+            })
+            → variants: Vec<VariantInfo>
+            → 各ファイルを static/uploads/ に書き出し
+            → Media::create_variant(&pool, ...) ×n
 ```
+
+---
 
 ## 状態管理
 
-Axum の `Extension` / `State` を使い `DbPool` をグローバル共有。ハンドラ引数に `State<DbPool>` を宣言するだけで注入される。
+| 状態 | 保持場所 | アクセス方法 |
+|---|---|---|
+| DB コネクションプール | `Router::with_state(pool)` | `State(pool): State<DbPool>` |
+| ページキャッシュ | `Arc<PageCache>` (アプリ起動時生成) | `Extension(cache): Extension<Arc<PageCache>>` |
+| ログインユーザー | JWT Cookie → ミドルウェアが検証 | `Extension(claims): Extension<Claims>` |
+| サイト設定 | DB `settings` テーブル (KV) | `Setting::get(&pool, key).await` |
 
-## エラーハンドリング方針
-
-- モデル層：`anyhow::Result<T>` で柔軟なエラー型を使用
-- ハンドラ層：エラーを `tracing` でログ出力し、HTTP 500 または空レスポンスを返す
-- 今後の課題：統一エラー型（`thiserror` ベース）への移行
+---
 
 ## セキュリティ設計
 
 | 項目 | 実装 |
 |---|---|
-| パスワード保存 | Argon2id（メモリハード・PHC 文字列形式） |
+| パスワード保存 | Argon2id (メモリハード / PHC 文字列形式) |
 | SQL インジェクション | SQLx プリペアドステートメント |
-| JWT 認証 | `jsonwebtoken` クレート（トークン生成は未実装） |
-| 管理画面保護 | 認証ミドルウェア（未実装） |
+| JWT 認証 | HS256 / HttpOnly Cookie / SameSite=Strict / 7日有効期限 |
+| 管理画面保護 | `require_auth` ミドルウェア (全管理ルートに適用) |
+| 権限チェック | `has_capability(role, cap)` で細粒度制御 |
+| XSS 対策 | Askama テンプレートが自動エスケープ / `|safe` フィルターは明示的に記述 |
+| ファイルアップロード | MIME タイプチェック / ランダムファイル名生成 |
+
+---
+
+## 拡張ポイント
+
+| 機能 | 拡張方法 |
+|---|---|
+| テーマ | `templates/themes/{name}/` にテンプレートを追加、管理画面の `active_theme` で切り替え |
+| ショートコード | `ShortcodeRegistry::register(name, handler)` で登録 |
+| フック | `hooks::add_action(name, callback)` / `add_filter(name, callback)` |
+| REST API | `src/routes/api.rs` にエンドポイント追加 |
+| DB (将来) | SQLx の `DATABASE_URL` を変更すれば PostgreSQL 等に移行可 (要クエリ互換確認) |

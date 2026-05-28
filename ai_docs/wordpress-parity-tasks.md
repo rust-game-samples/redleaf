@@ -284,6 +284,20 @@ WordPress に近づけるための機能追加タスク。
 
 ---
 
+## フェーズ 11 — データベース移行 🔵 将来拡張
+
+### PostgreSQL 対応（開発 SQLite / 本番 PostgreSQL 両立）
+
+- [ ] `sqlx` features に `postgres` を追加し `DATABASE_URL` の接続文字列で自動切り替え
+- [ ] FTS5 全文検索を PostgreSQL の `tsvector` / `GIN インデックス` に置き換え（`src/util.rs` の FTS クエリ）
+- [ ] ダッシュボードのサイトヘルス DB サイズ取得を `pg_database_size()` に対応（`PRAGMA page_count` を条件分岐）
+- [ ] マイグレーション SQL の方言差分を修正（`INTEGER PRIMARY KEY AUTOINCREMENT` → `BIGSERIAL PRIMARY KEY` 等）
+- [ ] `DATABASE_URL` が `postgres://` か `sqlite:` かをランタイムで判定するヘルパーを追加
+- [ ] PostgreSQL 用 Docker Compose 構成の追加 (`docker-compose.prod.yml`)
+- [ ] 本番 PostgreSQL 環境での統合テスト確認
+
+---
+
 ## 追加タスクのメモ欄
 
 > `/wp-add-task <説明>` コマンドで追記。
