@@ -4,15 +4,21 @@
 
 {% block style %}
 body { background: #f5f5f5; }
-main { max-width: 800px; margin: 0 auto; padding: 2rem; }
-.header { text-align: center; margin-bottom: 2.5rem; }
+.site-header { background: #2d5f3e; color: white; }
+.header-inner { max-width: 1100px; margin: 0 auto; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+.site-brand { color: white; text-decoration: none; font-size: 1.15rem; font-weight: 700; margin-right: auto; }
+.primary-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; }
+.primary-nav li { position: relative; }
+.primary-nav a { color: rgba(255,255,255,.9); text-decoration: none; font-size: .9rem; }
+.primary-nav a:hover { color: white; text-decoration: underline; }
+.primary-nav li ul { display: none; position: absolute; top: 100%; left: 0; background: #2d5f3e; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,.2); min-width: 160px; z-index: 100; }
+.primary-nav li:hover ul { display: block; }
+.primary-nav li ul a { display: block; padding: .5rem 1rem; white-space: nowrap; }
+main { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+.hero { text-align: center; margin-bottom: 2.5rem; padding: 2rem; }
 .logo { font-size: 3rem; }
 h1 { color: #2d5f3e; margin: .5rem 0; }
 .tagline { color: #666; font-style: italic; }
-.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 3rem; }
-.feature { background: white; padding: 1.25rem 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
-.feature h3 { margin-top: 0; color: #2d5f3e; font-size: 1rem; }
-.feature p { margin: 0; color: #555; font-size: .9rem; }
 .section-title { color: #2d5f3e; margin: 0 0 1.25rem; font-size: 1.3rem; }
 .post-card { background: white; padding: 1.5rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
 .post-card h2 { margin: 0 0 .4rem; font-size: 1.15rem; }
@@ -26,8 +32,9 @@ h1 { color: #2d5f3e; margin: .5rem 0; }
 {% endblock %}
 
 {% block body %}
+{% include "themes/default/partials/site_header.html" %}
 <main>
-  <div class="header">
+  <div class="hero">
     {% if logo_url.is_empty() %}
     <div class="logo">🌿</div>
     {% else %}
@@ -35,13 +42,6 @@ h1 { color: #2d5f3e; margin: .5rem 0; }
     {% endif %}
     <h1>{{ site_name }}</h1>
     <p class="tagline">{{ site_description }}</p>
-  </div>
-
-  <div class="features">
-    <div class="feature"><h3>⚡ Fast</h3><p>Compiled Rust backend with minimal runtime</p></div>
-    <div class="feature"><h3>🪶 Lightweight</h3><p>Single binary, easy to deploy</p></div>
-    <div class="feature"><h3>🧱 Extensible</h3><p>Plugin &amp; theme support</p></div>
-    <div class="feature"><h3>🌐 Headless Ready</h3><p>API-first architecture</p></div>
   </div>
 
   <section>

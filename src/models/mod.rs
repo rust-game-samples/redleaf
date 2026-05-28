@@ -7,10 +7,12 @@ pub mod post_revision;
 pub mod setting;
 pub mod tag;
 pub mod user;
+pub mod nav_menu;
 pub mod widget;
 
 pub use category::{Category, CategoryWithCount};
 pub use media::Media;
+pub use nav_menu::{NavMenu, NavMenuItem, LOCATIONS};
 pub use page::{Page, CreatePage, UpdatePage};
 pub use post::{Post, PostWithAuthor};
 pub use post_meta::PostMeta;

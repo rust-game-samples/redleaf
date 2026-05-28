@@ -1,14 +1,31 @@
 {% extends "base.html" %}
 
-{% block title %}{{ tag.name }} — RedLeaf CMS{% endblock %}
+{% block title %}{{ tag.name }} — {{ site_name }}{% endblock %}
+
+{% block head %}
+{{ self.breadcrumb_json_ld()|safe }}
+{% endblock %}
 
 {% block style %}
 body { background: #f5f5f5; }
-main { max-width: 800px; margin: 0 auto; padding: 2rem; }
-h1 { color: #2d5f3e; }
-.back { margin-bottom: 1rem; }
-.back a { text-decoration: none; color: #2d5f3e; }
-.back a:hover { text-decoration: underline; }
+.site-header { background: #2d5f3e; color: white; }
+.header-inner { max-width: 1100px; margin: 0 auto; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+.site-brand { color: white; text-decoration: none; font-size: 1.15rem; font-weight: 700; margin-right: auto; }
+.primary-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; }
+.primary-nav li { position: relative; }
+.primary-nav a { color: rgba(255,255,255,.9); text-decoration: none; font-size: .9rem; }
+.primary-nav a:hover { color: white; text-decoration: underline; }
+.primary-nav li ul { display: none; position: absolute; top: 100%; left: 0; background: #2d5f3e; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,.2); min-width: 160px; z-index: 100; }
+.primary-nav li:hover ul { display: block; }
+.primary-nav li ul a { display: block; padding: .5rem 1rem; white-space: nowrap; }
+.breadcrumb-nav { padding: .5rem 0; font-size: .85rem; }
+.breadcrumb { list-style: none; margin: 0; padding: 0; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.breadcrumb-item + .breadcrumb-item::before { content: "›"; color: #9ca3af; }
+.breadcrumb-item a { color: #2d5f3e; text-decoration: none; }
+.breadcrumb-item a:hover { text-decoration: underline; }
+.breadcrumb-item.active { color: #6b7280; }
+main { max-width: 800px; margin: 0 auto; padding: 2rem 1.5rem; }
+h1 { color: #2d5f3e; margin-top: 0; }
 .post { background: white; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
 .post h2 { margin-top: 0; }
 .post h2 a { text-decoration: none; color: #2d5f3e; }
@@ -23,8 +40,9 @@ h1 { color: #2d5f3e; }
 {% endblock %}
 
 {% block body %}
+{% include "themes/default/partials/site_header.html" %}
 <main>
-  <div class="back"><a href="/posts">← All Posts</a></div>
+  {{ self.the_breadcrumb()|safe }}
   <h1>Tag: {{ tag.name }}</h1>
   {% if posts.is_empty() %}
   <p style="color:#666">No posts with this tag yet.</p>

@@ -5,16 +5,30 @@
 {% block head %}
 <meta property="og:title" content="{{ page.title }}">
 <meta property="og:type" content="website">
+{{ self.breadcrumb_json_ld()|safe }}
 {% endblock %}
 
 {% block style %}
 body { background: #f5f5f5; }
-main { max-width: 800px; margin: 0 auto; padding: 2rem; }
-.back { margin-bottom: 1rem; }
-.back a { text-decoration: none; color: #2d5f3e; }
-.back a:hover { text-decoration: underline; }
-.page { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
-.page h1 { margin-top: 0; color: #2d5f3e; }
+.site-header { background: #2d5f3e; color: white; }
+.header-inner { max-width: 1100px; margin: 0 auto; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+.site-brand { color: white; text-decoration: none; font-size: 1.15rem; font-weight: 700; margin-right: auto; }
+.primary-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; }
+.primary-nav li { position: relative; }
+.primary-nav a { color: rgba(255,255,255,.9); text-decoration: none; font-size: .9rem; }
+.primary-nav a:hover { color: white; text-decoration: underline; }
+.primary-nav li ul { display: none; position: absolute; top: 100%; left: 0; background: #2d5f3e; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,.2); min-width: 160px; z-index: 100; }
+.primary-nav li:hover ul { display: block; }
+.primary-nav li ul a { display: block; padding: .5rem 1rem; white-space: nowrap; }
+.breadcrumb-nav { padding: .5rem 0; font-size: .85rem; }
+.breadcrumb { list-style: none; margin: 0; padding: 0; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.breadcrumb-item + .breadcrumb-item::before { content: "›"; color: #9ca3af; }
+.breadcrumb-item a { color: #2d5f3e; text-decoration: none; }
+.breadcrumb-item a:hover { text-decoration: underline; }
+.breadcrumb-item.active { color: #6b7280; }
+main { max-width: 800px; margin: 0 auto; padding: 2rem 1.5rem; }
+.page-article { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.page-article h1 { margin-top: 0; color: #2d5f3e; }
 .content { line-height: 1.7; }
 .content h1, .content h2, .content h3 { color: #2d5f3e; }
 .content code { background: #f1f5f1; padding: .1rem .3rem; border-radius: 3px; font-size: .88em; }
@@ -24,9 +38,10 @@ main { max-width: 800px; margin: 0 auto; padding: 2rem; }
 {% endblock %}
 
 {% block body %}
+{% include "themes/default/partials/site_header.html" %}
 <main>
-  <div class="back"><a href="/">← Back to home</a></div>
-  <article class="page">
+  {{ self.the_breadcrumb()|safe }}
+  <article class="page-article">
     <h1>{{ page.title }}</h1>
     <div class="content">{{ html_content|safe }}</div>
   </article>

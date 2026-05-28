@@ -6,18 +6,22 @@
 
 {% block style %}
 body { background: #f5f5f5; }
-main { max-width: 800px; margin: 0 auto; padding: 2rem; }
+.site-header { background: #2d5f3e; color: white; }
+.header-inner { max-width: 1100px; margin: 0 auto; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+.site-brand { color: white; text-decoration: none; font-size: 1.15rem; font-weight: 700; margin-right: auto; }
+.primary-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; }
+.primary-nav li { position: relative; }
+.primary-nav a { color: rgba(255,255,255,.9); text-decoration: none; font-size: .9rem; }
+.primary-nav a:hover { color: white; text-decoration: underline; }
+.primary-nav li ul { display: none; position: absolute; top: 100%; left: 0; background: #2d5f3e; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,.2); min-width: 160px; z-index: 100; }
+.primary-nav li:hover ul { display: block; }
+.primary-nav li ul a { display: block; padding: .5rem 1rem; white-space: nowrap; }
+main { max-width: 800px; margin: 0 auto; padding: 2rem 1.5rem; }
 h1 { color: #2d5f3e; margin-top: 0; }
 .search-form { display: flex; gap: .6rem; margin-bottom: 2rem; }
-.search-form input[type=text] {
-  flex: 1; padding: .6rem 1rem; font-size: 1rem;
-  border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit;
-}
+.search-form input[type=text] { flex: 1; padding: .6rem 1rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; }
 .search-form input[type=text]:focus { outline: none; border-color: #2d5f3e; box-shadow: 0 0 0 3px rgba(45,95,62,.1); }
-.search-form button {
-  padding: .6rem 1.25rem; background: #2d5f3e; color: white;
-  border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; font-family: inherit;
-}
+.search-form button { padding: .6rem 1.25rem; background: #2d5f3e; color: white; border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; font-family: inherit; }
 .search-form button:hover { background: #234a30; }
 .result-count { color: #6b7280; font-size: .9rem; margin-bottom: 1.25rem; }
 .post { background: white; padding: 1.5rem; margin-bottom: 1rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
@@ -27,15 +31,12 @@ h1 { color: #2d5f3e; margin-top: 0; }
 .post-meta { color: #888; font-size: .85rem; margin: 0 0 .6rem; }
 .post-excerpt { color: #444; font-size: .93rem; margin: 0; }
 .no-results { text-align: center; color: #9ca3af; padding: 3rem 0; }
-.no-results p { margin: .5rem 0; }
-.back-link { display: inline-block; margin-top: 1.5rem; color: #2d5f3e; text-decoration: none; font-weight: 500; }
-.back-link:hover { text-decoration: underline; }
 {% endblock %}
 
 {% block body %}
+{% include "themes/default/partials/site_header.html" %}
 <main>
   <h1>Search</h1>
-
   <form class="search-form" action="/search" method="get">
     <input type="text" name="q" value="{{ query }}" placeholder="Search posts…" autofocus>
     <button type="submit">Search</button>
@@ -45,18 +46,13 @@ h1 { color: #2d5f3e; margin-top: 0; }
     {% if posts.is_empty() %}
     <div class="no-results">
       <p style="font-size:2rem;">🔍</p>
-      <p>No results found for <strong>"{{ query }}"</strong>.</p>
-      <p style="font-size:.9rem;">Try different keywords or check your spelling.</p>
+      <p>No results for <strong>"{{ query }}"</strong>.</p>
     </div>
     {% else %}
     <p class="result-count">{{ posts.len() }} result{% if posts.len() != 1 %}s{% endif %} for <strong>"{{ query }}"</strong></p>
     {% for post in posts %}
     <div class="post">
-      <h2>
-        <a href="/posts/{% if post_url_type == "id" %}{{ post.id }}{% else %}{{ post.slug }}{% endif %}">
-          {{ post.title }}
-        </a>
-      </h2>
+      <h2><a href="/posts/{% if post_url_type == "id" %}{{ post.id }}{% else %}{{ post.slug }}{% endif %}">{{ post.title }}</a></h2>
       <p class="post-meta">{{ post.created_at | rl_date("%Y-%m-%d") }}</p>
       {% if let Some(excerpt) = &post.excerpt %}
       <p class="post-excerpt">{{ excerpt }}</p>
@@ -65,7 +61,5 @@ h1 { color: #2d5f3e; margin-top: 0; }
     {% endfor %}
     {% endif %}
   {% endif %}
-
-  <a href="/" class="back-link">← Back to home</a>
 </main>
 {% endblock %}

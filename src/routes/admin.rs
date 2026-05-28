@@ -26,6 +26,7 @@ use crate::{
     models::{
         Category, CategoryWithCount,
         Media,
+        NavMenu, NavMenuItem, LOCATIONS,
         Page, CreatePage, UpdatePage,
         Post, PostWithAuthor,
         PostMeta,
@@ -302,6 +303,14 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/widgets/areas/{id}/delete", post(delete_widget_area))
         .route("/widgets/{id}", post(update_widget))
         .route("/widgets/{id}/delete", post(delete_widget))
+        .route("/menus", get(list_menus))
+        .route("/menus/new", get(new_menu_form).post(create_menu))
+        .route("/menus/{id}/edit", get(edit_menu_form).post(update_menu))
+        .route("/menus/{id}/delete", post(delete_menu))
+        .route("/menus/{id}/items", post(create_menu_item))
+        .route("/menus/{id}/items/reorder", post(reorder_menu_items))
+        .route("/menus/{id}/items/{item_id}", post(update_menu_item))
+        .route("/menus/{id}/items/{item_id}/delete", post(delete_menu_item))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -1170,4 +1179,221 @@ async fn delete_widget_area(
 ) -> Result<Response, AppError> {
     WidgetArea::delete(&pool, id).await?;
     Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+// ─── Nav menu handlers ────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/menus/list.html")]
+struct MenuListTemplate {
+    menus: Vec<(NavMenu, i64)>,
+    locations: &'static [(&'static str, &'static str)],
+    assigned_locations: Vec<String>,
+}
+
+impl MenuListTemplate {
+    fn is_assigned(&self, slug: &str) -> bool {
+        self.assigned_locations.iter().any(|l| l == slug)
+    }
+}
+
+#[derive(Template)]
+#[template(path = "admin/menus/edit.html")]
+struct MenuEditTemplate {
+    heading: String,
+    action: String,
+    name: String,
+    location: String,
+    menu_id: Option<i64>,
+    items: Vec<NavMenuItem>,
+    pages: Vec<Page>,
+    categories: Vec<Category>,
+    locations: &'static [(&'static str, &'static str)],
+    error: Option<String>,
+}
+
+async fn list_menus(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let all = NavMenu::find_all(&pool).await?;
+    let mut menus = Vec::new();
+    for menu in all {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM nav_menu_items WHERE menu_id = ?",
+        )
+        .bind(menu.id)
+        .fetch_one(&pool)
+        .await?;
+        menus.push((menu, count));
+    }
+    let assigned_locations: Vec<String> = menus
+        .iter()
+        .map(|(m, _)| m.location.clone())
+        .filter(|l| !l.is_empty())
+        .collect();
+    render(MenuListTemplate { menus, locations: LOCATIONS, assigned_locations })
+}
+
+async fn new_menu_form() -> Result<Response, AppError> {
+    render(MenuEditTemplate {
+        heading: "New Menu".into(),
+        action: "/admin/menus/new".into(),
+        name: String::new(),
+        location: String::new(),
+        menu_id: None,
+        items: vec![],
+        pages: vec![],
+        categories: vec![],
+        locations: LOCATIONS,
+        error: None,
+    })
+}
+
+#[derive(Deserialize)]
+struct MenuForm {
+    name: String,
+    location: Option<String>,
+}
+
+async fn create_menu(
+    State(pool): State<DbPool>,
+    Form(form): Form<MenuForm>,
+) -> Result<Response, AppError> {
+    let loc = form.location.as_deref().unwrap_or("").trim().to_owned();
+    let menu = NavMenu::create(&pool, form.name.trim(), &loc).await?;
+    Ok(Redirect::to(&format!("/admin/menus/{}/edit", menu.id)).into_response())
+}
+
+async fn edit_menu_form(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    let menu = NavMenu::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    let (items, pages, categories) = tokio::join!(
+        NavMenuItem::find_by_menu(&pool, id),
+        Page::find_all(&pool),
+        Category::find_all(&pool),
+    );
+    render(MenuEditTemplate {
+        heading: format!("Edit — {}", menu.name),
+        action: format!("/admin/menus/{}/edit", id),
+        name: menu.name,
+        location: menu.location,
+        menu_id: Some(id),
+        items: items?,
+        pages: pages?,
+        categories: categories?,
+        locations: LOCATIONS,
+        error: None,
+    })
+}
+
+async fn update_menu(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+    Form(form): Form<MenuForm>,
+) -> Result<Response, AppError> {
+    let loc = form.location.as_deref().unwrap_or("").trim().to_owned();
+    NavMenu::update(&pool, id, form.name.trim(), &loc).await?;
+    Ok(Redirect::to(&format!("/admin/menus/{}/edit", id)).into_response())
+}
+
+async fn delete_menu(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    NavMenu::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/menus").into_response())
+}
+
+#[derive(Deserialize)]
+struct MenuItemForm {
+    #[serde(default)]
+    _item_id: String,
+    item_type: Option<String>,
+    // custom
+    label: Option<String>,
+    url: Option<String>,
+    // page
+    ref_id_page: Option<i64>,
+    label_page: Option<String>,
+    // category
+    ref_id_cat: Option<i64>,
+    label_cat: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    parent_id: Option<i64>,
+}
+
+async fn create_menu_item(
+    State(pool): State<DbPool>,
+    Path(menu_id): Path<i64>,
+    Form(form): Form<MenuItemForm>,
+) -> Result<Response, AppError> {
+    let (item_type, label, url, ref_id) = resolve_item_fields(&pool, &form).await;
+    NavMenuItem::create(&pool, menu_id, form.parent_id, &item_type, &label, &url, ref_id).await?;
+    Ok(Redirect::to(&format!("/admin/menus/{}/edit", menu_id)).into_response())
+}
+
+async fn update_menu_item(
+    State(pool): State<DbPool>,
+    Path((menu_id, item_id)): Path<(i64, i64)>,
+    Form(form): Form<MenuItemForm>,
+) -> Result<Response, AppError> {
+    let label = form.label.as_deref().unwrap_or("").trim().to_owned();
+    let url = form.url.as_deref().unwrap_or("").trim().to_owned();
+    NavMenuItem::update(&pool, item_id, form.parent_id, &label, &url).await?;
+    Ok(Redirect::to(&format!("/admin/menus/{}/edit", menu_id)).into_response())
+}
+
+async fn delete_menu_item(
+    State(pool): State<DbPool>,
+    Path((menu_id, item_id)): Path<(i64, i64)>,
+) -> Result<Response, AppError> {
+    NavMenuItem::delete(&pool, item_id).await?;
+    Ok(Redirect::to(&format!("/admin/menus/{}/edit", menu_id)).into_response())
+}
+
+#[derive(Deserialize)]
+struct ReorderItemsForm {
+    #[serde(rename = "ids[]")]
+    ids: Vec<i64>,
+}
+
+async fn reorder_menu_items(
+    State(pool): State<DbPool>,
+    Path(menu_id): Path<i64>,
+    Form(form): Form<ReorderItemsForm>,
+) -> Result<Response, AppError> {
+    NavMenuItem::reorder(&pool, &form.ids).await?;
+    Ok(Redirect::to(&format!("/admin/menus/{}/edit", menu_id)).into_response())
+}
+
+async fn resolve_item_fields(pool: &DbPool, form: &MenuItemForm) -> (String, String, String, Option<i64>) {
+    match form.item_type.as_deref().unwrap_or("custom") {
+        "page" => {
+            if let Some(ref_id) = form.ref_id_page {
+                if let Ok(Some(page)) = Page::find_by_id(pool, ref_id).await {
+                    let label = form.label_page.as_deref().unwrap_or("").trim().to_owned();
+                    let label = if label.is_empty() { page.title.clone() } else { label };
+                    let url = format!("/pages/{}", page.slug);
+                    return ("page".into(), label, url, Some(ref_id));
+                }
+            }
+            ("custom".into(), String::new(), String::new(), None)
+        }
+        "category" => {
+            if let Some(ref_id) = form.ref_id_cat {
+                if let Ok(Some(cat)) = Category::find_by_id(pool, ref_id).await {
+                    let label = form.label_cat.as_deref().unwrap_or("").trim().to_owned();
+                    let label = if label.is_empty() { cat.name.clone() } else { label };
+                    let url = format!("/categories/{}", cat.slug);
+                    return ("category".into(), label, url, Some(ref_id));
+                }
+            }
+            ("custom".into(), String::new(), String::new(), None)
+        }
+        _ => {
+            let label = form.label.as_deref().unwrap_or("").trim().to_owned();
+            let url = form.url.as_deref().unwrap_or("").trim().to_owned();
+            ("custom".into(), label, url, None)
+        }
+    }
 }

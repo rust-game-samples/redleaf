@@ -113,17 +113,17 @@ WordPress に近づけるための機能追加タスク。
 
 ### カスタムメニュー
 
-- [ ] `nav_menus` / `nav_menu_items` テーブル追加
-- [ ] 管理画面: メニュー作成・アイテム追加（URL / 固定ページ / カテゴリ / 外部リンク）
-- [ ] 管理画面: ドラッグ＆ドロップでメニュー並び替え・階層設定
-- [ ] テンプレート内 `{{ rl_nav_menu(location) }}` で `<ul>` レンダリング
-- [ ] メニューロケーション登録（primary / footer / social など）
+- [x] `nav_menus` / `nav_menu_items` テーブル追加
+- [x] 管理画面: メニュー作成・アイテム追加（URL / 固定ページ / カテゴリ / 外部リンク）
+- [x] 管理画面: ドラッグ＆ドロップでメニュー並び替え・階層設定
+- [x] テンプレート内 `{{ rl_nav_menu(location) }}` で `<ul>` レンダリング
+- [x] メニューロケーション登録（primary / footer / social など）
 
 ### パンくずリスト (Breadcrumbs)
 
-- [ ] `Breadcrumb` 構造体の設計（ページ種別に応じた自動生成）
-- [ ] テンプレートタグ `{{ the_breadcrumb() }}` で `<nav aria-label="breadcrumb">` を出力
-- [ ] 構造化データ (JSON-LD `BreadcrumbList`) の自動出力
+- [x] `Breadcrumb` 構造体の設計（ページ種別に応じた自動生成）
+- [x] テンプレートタグ `{{ the_breadcrumb() }}` で `<nav aria-label="breadcrumb">` を出力
+- [x] 構造化データ (JSON-LD `BreadcrumbList`) の自動出力
 
 ---
 

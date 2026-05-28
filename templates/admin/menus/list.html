@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Menus{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Menus</h1>
+  <a href="/admin/menus/new" class="btn btn-primary">+ New Menu</a>
+</div>
+
+{% if menus.is_empty() %}
+<div class="card">
+  <p class="empty">No menus yet. <a href="/admin/menus/new">Create one</a>.</p>
+</div>
+{% else %}
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Location</th>
+        <th>Items</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for (menu, count) in menus %}
+      <tr>
+        <td><strong>{{ menu.name }}</strong></td>
+        <td>
+          {% if menu.location.is_empty() %}
+          <span style="color:#9ca3af">—</span>
+          {% else %}
+          <code style="background:#f3f4f6;padding:.15rem .4rem;border-radius:3px;font-size:.85rem;">{{ menu.location }}</code>
+          {% endif %}
+        </td>
+        <td>{{ count }}</td>
+        <td class="acts">
+          <a href="/admin/menus/{{ menu.id }}/edit" class="btn btn-secondary">Edit</a>
+          <form method="post" action="/admin/menus/{{ menu.id }}/delete"
+                onsubmit="return confirm('Delete this menu and all its items?')" style="margin:0;">
+            <button type="submit" class="btn btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:1.5rem;">
+  <h2 style="margin-top:0;font-size:1rem;color:#374151;font-weight:600;">Registered Locations</h2>
+  <table>
+    <thead><tr><th>Slug</th><th>Description</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for (slug, label) in locations %}
+      <tr>
+        <td><code style="background:#f3f4f6;padding:.15rem .4rem;border-radius:3px;font-size:.85rem;">{{ slug }}</code></td>
+        <td>{{ label }}</td>
+        <td>
+          {% if self.is_assigned(slug) %}
+          <span class="badge published">Assigned</span>
+          {% else %}
+          <span class="badge draft">Unassigned</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

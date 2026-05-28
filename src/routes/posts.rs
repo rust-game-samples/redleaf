@@ -13,7 +13,7 @@ use crate::{
     db::DbPool,
     errors::AppError,
     filters,
-    models::{Post, PostWithAuthor, Setting, Tag, Widget},
+    models::{NavMenu, Post, PostWithAuthor, Setting, Tag, Widget},
     util::{render, Pagination, PER_PAGE},
 };
 
@@ -25,6 +25,7 @@ struct PostListTemplate {
     paging: Pagination,
     site_name: String,
     widget_areas: HashMap<String, String>,
+    nav_menus: HashMap<String, String>,
 }
 
 impl PostListTemplate {
@@ -47,6 +48,19 @@ impl PostListTemplate {
     fn render_widget_area(&self, slug: &str) -> &str {
         self.widget_areas.get(slug).map(|s| s.as_str()).unwrap_or("")
     }
+
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
+
+    fn the_breadcrumb(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_html};
+        let items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+            BreadcrumbItem { label: "Posts".into(), url: None },
+        ];
+        breadcrumb_html(&items)
+    }
 }
 
 #[derive(Template)]
@@ -58,6 +72,7 @@ struct PostShowTemplate {
     site_name: String,
     post_url_type: String,
     widget_areas: HashMap<String, String>,
+    nav_menus: HashMap<String, String>,
 }
 
 impl PostShowTemplate {
@@ -140,6 +155,34 @@ impl PostShowTemplate {
     fn render_widget_area(&self, slug: &str) -> &str {
         self.widget_areas.get(slug).map(|s| s.as_str()).unwrap_or("")
     }
+
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
+
+    fn the_breadcrumb(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_html};
+        let mut items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+        ];
+        if let (Some(cat_name), Some(cat_slug)) = (&self.post.category_name, &self.post.category_slug) {
+            items.push(BreadcrumbItem { label: cat_name.clone(), url: Some(format!("/categories/{}", cat_slug)) });
+        }
+        items.push(BreadcrumbItem { label: self.post.title.clone(), url: None });
+        breadcrumb_html(&items)
+    }
+
+    fn breadcrumb_json_ld(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_json_ld};
+        let mut items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+        ];
+        if let (Some(cat_name), Some(cat_slug)) = (&self.post.category_name, &self.post.category_slug) {
+            items.push(BreadcrumbItem { label: cat_name.clone(), url: Some(format!("/categories/{}", cat_slug)) });
+        }
+        items.push(BreadcrumbItem { label: self.post.title.clone(), url: Some(self.the_permalink()) });
+        breadcrumb_json_ld(&items)
+    }
 }
 
 fn escape_html(s: &str) -> String {
@@ -166,26 +209,28 @@ async fn list_posts(
 ) -> Result<Response, AppError> {
     let page = q.page.unwrap_or(1).max(1);
 
-    let (posts, total, post_url_type, site_name, widget_areas) = tokio::join!(
+    let (posts, total, post_url_type, site_name, widget_areas, nav_menus) = tokio::join!(
         Post::find_published_paginated(&pool, page, PER_PAGE),
         Post::count_published(&pool),
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
         Widget::prerender_all(&pool),
+        NavMenu::prerender_all(&pool),
     );
 
     let paging = Pagination::new(page, total?, PER_PAGE, "/posts");
-    render(PostListTemplate { posts: posts?, post_url_type, paging, site_name, widget_areas })
+    render(PostListTemplate { posts: posts?, post_url_type, paging, site_name, widget_areas, nav_menus })
 }
 
 async fn show_post(
     State(pool): State<DbPool>,
     Path(param): Path<String>,
 ) -> Result<Response, AppError> {
-    let (url_type, site_name, widget_areas) = tokio::join!(
+    let (url_type, site_name, widget_areas, nav_menus) = tokio::join!(
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
         Widget::prerender_all(&pool),
+        NavMenu::prerender_all(&pool),
     );
 
     let post = if url_type == "id" {
@@ -207,6 +252,7 @@ async fn show_post(
         site_name,
         post_url_type: url_type,
         widget_areas,
+        nav_menus,
     })
 }
 

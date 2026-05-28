@@ -1,0 +1,277 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }} — Menus{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<style>
+  .menu-layout { display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem; align-items: start; }
+  .item-row { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: .65rem 1rem; margin-bottom: .4rem; display: flex; align-items: center; gap: .75rem; cursor: grab; }
+  .item-row:active { cursor: grabbing; }
+  .item-row.sortable-ghost { opacity: .4; }
+  .item-drag { color: #9ca3af; flex-shrink: 0; }
+  .item-info { flex: 1; min-width: 0; }
+  .item-label { font-weight: 500; font-size: .9rem; color: #374151; }
+  .item-url { font-size: .78rem; color: #9ca3af; }
+  .item-parent-badge { font-size: .72rem; background: #fef3c7; color: #92400e; padding: .1rem .4rem; border-radius: 3px; margin-left: .4rem; }
+  .item-type-badge { font-size: .72rem; background: #dbeafe; color: #1e40af; padding: .1rem .4rem; border-radius: 3px; margin-left: .4rem; }
+  .item-acts { display: flex; gap: .3rem; flex-shrink: 0; }
+  .item-acts form { margin: 0; }
+  .empty-items { text-align: center; color: #9ca3af; padding: 2rem; border: 2px dashed #e5e7eb; border-radius: 6px; font-size: .9rem; }
+  .panel-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.08); padding: 1.25rem; margin-bottom: 1.25rem; }
+  .panel-card h3 { margin: 0 0 1rem; font-size: .95rem; color: #374151; }
+  select { width: 100%; padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: .9rem; background: white; }
+  .type-fields { display: none; }
+  .type-fields.active { display: block; }
+  .indent-1 { padding-left: 1.5rem; }
+  .save-order-wrap { margin-top: .5rem; display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>{{ heading }}</h1>
+  <a href="/admin/menus" class="btn btn-secondary">← Back</a>
+</div>
+
+{% if let Some(err) = error %}
+<div class="alert-error">{{ err }}</div>
+{% endif %}
+
+<div class="menu-layout">
+  <div>
+    <!-- Menu metadata -->
+    <div class="card" style="margin-bottom:1.25rem;">
+      <h2 style="margin-top:0;font-size:1rem;color:#374151;font-weight:600;">Menu Settings</h2>
+      <form method="post" action="{{ action }}">
+        <div class="form-group">
+          <label for="name">Menu Name</label>
+          <input type="text" id="name" name="name" value="{{ name }}" required>
+        </div>
+        <div class="form-group" style="margin-bottom:.75rem;">
+          <label for="location">Location</label>
+          <select id="location" name="location">
+            <option value="">— No location —</option>
+            {% for (slug, label) in locations %}
+            <option value="{{ slug }}" {% if location == *slug %}selected{% endif %}>{{ label }} ({{ slug }})</option>
+            {% endfor %}
+          </select>
+          <small style="color:#6b7280;display:block;margin-top:.3rem;">
+            Use <code>{{ "{{" }} self.render_nav_menu("primary")|safe {{ "}}" }}</code> in templates.
+          </small>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+      </form>
+    </div>
+
+    {% if let Some(menu_id) = menu_id %}
+    <!-- Items list -->
+    <div class="card">
+      <h2 style="margin-top:0;font-size:1rem;color:#374151;font-weight:600;">Menu Items</h2>
+
+      <div id="item-list">
+        {% if items.is_empty() %}
+        <div class="empty-items">No items yet — add one from the panel →</div>
+        {% else %}
+        {% for item in items %}
+        <div class="item-row {% if item.parent_id.is_some() %}indent-1{% endif %}" data-id="{{ item.id }}">
+          <span class="item-drag">⠿</span>
+          <div class="item-info">
+            <div class="item-label">
+              {{ item.label }}
+              <span class="item-type-badge">{{ item.item_type }}</span>
+              {% if item.parent_id.is_some() %}
+              <span class="item-parent-badge">sub-item</span>
+              {% endif %}
+            </div>
+            <div class="item-url">{{ item.url }}</div>
+          </div>
+          <div class="item-acts">
+            <button class="btn btn-secondary" style="font-size:.75rem;padding:.2rem .5rem;"
+                    onclick="openEditItem({{ item.id }}, '{{ item.label|escape }}', '{{ item.url|escape }}', {{ item.parent_id.unwrap_or(0) }})">Edit</button>
+            <form method="post" action="/admin/menus/{{ menu_id }}/items/{{ item.id }}/delete"
+                  onsubmit="return confirm('Delete this item?')" style="margin:0;">
+              <button class="btn btn-danger" type="submit" style="font-size:.75rem;padding:.2rem .5rem;">✕</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+
+      <div class="save-order-wrap" id="save-order-wrap">
+        <button class="btn btn-primary" style="font-size:.85rem;" onclick="saveOrder({{ menu_id }})">Save Order</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    {% if let Some(menu_id) = menu_id %}
+    <!-- Add / edit item panel -->
+    <div class="panel-card" id="item-panel">
+      <h3 id="panel-title">Add Item</h3>
+      <form method="post" id="item-form" action="/admin/menus/{{ menu_id }}/items">
+        <input type="hidden" name="_item_id" id="edit-item-id" value="">
+
+        <div class="form-group" id="type-group">
+          <label>Item Type</label>
+          <select name="item_type" id="type-select" onchange="onTypeChange()">
+            <option value="custom">Custom URL</option>
+            <option value="page">Page</option>
+            <option value="category">Category</option>
+          </select>
+        </div>
+
+        <!-- custom fields -->
+        <div class="type-fields active" id="fields-custom">
+          <div class="form-group">
+            <label>Label</label>
+            <input type="text" name="label" id="label-custom" placeholder="e.g. Home">
+          </div>
+          <div class="form-group">
+            <label>URL</label>
+            <input type="text" name="url" id="url-custom" placeholder="e.g. /about">
+          </div>
+        </div>
+
+        <!-- page fields -->
+        <div class="type-fields" id="fields-page">
+          <div class="form-group">
+            <label>Page</label>
+            <select name="ref_id_page" id="ref-page" onchange="onPageChange()">
+              <option value="">— select page —</option>
+              {% for page in pages %}
+              <option value="{{ page.id }}" data-slug="{{ page.slug }}" data-title="{{ page.title|escape }}">{{ page.title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Label <span style="color:#9ca3af;font-weight:400;">(overrides page title)</span></label>
+            <input type="text" name="label_page" id="label-page" placeholder="Leave blank to use page title">
+          </div>
+        </div>
+
+        <!-- category fields -->
+        <div class="type-fields" id="fields-category">
+          <div class="form-group">
+            <label>Category</label>
+            <select name="ref_id_cat" id="ref-cat" onchange="onCatChange()">
+              <option value="">— select category —</option>
+              {% for cat in categories %}
+              <option value="{{ cat.id }}" data-slug="{{ cat.slug }}" data-name="{{ cat.name|escape }}">{{ cat.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Label <span style="color:#9ca3af;font-weight:400;">(overrides category name)</span></label>
+            <input type="text" name="label_cat" id="label-cat" placeholder="Leave blank to use category name">
+          </div>
+        </div>
+
+        <div class="form-group" id="parent-group">
+          <label>Parent Item <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+          <select name="parent_id" id="parent-select">
+            <option value="">— top level —</option>
+            {% for item in items %}
+            {% if item.parent_id.is_none() %}
+            <option value="{{ item.id }}">{{ item.label }}</option>
+            {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+          <button type="submit" class="btn btn-primary" id="submit-btn">Add Item</button>
+          <button type="button" class="btn btn-secondary" id="cancel-btn" style="display:none" onclick="resetPanel()">Cancel</button>
+        </div>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function onTypeChange() {
+  var type = document.getElementById('type-select').value;
+  document.querySelectorAll('.type-fields').forEach(function(el) { el.classList.remove('active'); });
+  var fields = document.getElementById('fields-' + type);
+  if (fields) fields.classList.add('active');
+}
+
+function onPageChange() {
+  var sel = document.getElementById('ref-page');
+  var opt = sel.options[sel.selectedIndex];
+  document.getElementById('label-page').placeholder = opt.dataset.title || 'Leave blank to use page title';
+}
+
+function onCatChange() {
+  var sel = document.getElementById('ref-cat');
+  var opt = sel.options[sel.selectedIndex];
+  document.getElementById('label-cat').placeholder = opt.dataset.name || 'Leave blank to use category name';
+}
+
+function openEditItem(id, label, url, parentId) {
+  document.getElementById('panel-title').textContent = 'Edit Item';
+  document.getElementById('submit-btn').textContent = 'Save Changes';
+  document.getElementById('cancel-btn').style.display = 'inline-block';
+  document.getElementById('edit-item-id').value = id;
+  document.getElementById('item-form').action = document.getElementById('item-form').action.replace(/\/items(\/\d+)?$/, '/items/' + id);
+
+  document.getElementById('type-select').value = 'custom';
+  document.getElementById('type-select').disabled = true;
+  document.querySelectorAll('.type-fields').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('fields-custom').classList.add('active');
+
+  document.getElementById('label-custom').value = label;
+  document.getElementById('url-custom').value = url;
+  document.getElementById('parent-select').value = parentId || '';
+  document.getElementById('type-group').style.display = 'none';
+}
+
+function resetPanel() {
+  document.getElementById('panel-title').textContent = 'Add Item';
+  document.getElementById('submit-btn').textContent = 'Add Item';
+  document.getElementById('cancel-btn').style.display = 'none';
+  document.getElementById('edit-item-id').value = '';
+  var base = document.getElementById('item-form').action.replace(/\/items\/\d+$/, '/items');
+  document.getElementById('item-form').action = base;
+  document.getElementById('type-select').disabled = false;
+  document.getElementById('type-select').value = 'custom';
+  document.getElementById('type-group').style.display = '';
+  document.querySelectorAll('.type-fields').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('fields-custom').classList.add('active');
+  document.getElementById('label-custom').value = '';
+  document.getElementById('url-custom').value = '';
+  document.getElementById('parent-select').value = '';
+}
+
+var sortable = Sortable.create(document.getElementById('item-list'), {
+  animation: 150,
+  handle: '.item-drag',
+  ghostClass: 'sortable-ghost',
+  filter: '.empty-items',
+  onEnd: function() {
+    document.getElementById('save-order-wrap').style.display = 'block';
+  }
+});
+
+function saveOrder(menuId) {
+  var ids = Array.from(document.querySelectorAll('#item-list .item-row')).map(function(el) {
+    return el.dataset.id;
+  });
+  var form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/admin/menus/' + menuId + '/items/reorder';
+  ids.forEach(function(id) {
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'ids[]';
+    input.value = id;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+}
+</script>
+{% endblock %}

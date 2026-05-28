@@ -6,12 +6,14 @@ use axum::{
 };
 use serde::Deserialize;
 
+use std::collections::HashMap;
+
 use crate::{
     auth::generate_token,
     db::DbPool,
     errors::AppError,
     filters,
-    models::{Page, Post, PostWithAuthor, Setting, User, user::CreateUser},
+    models::{NavMenu, Page, Post, PostWithAuthor, Setting, User, user::CreateUser},
     util::{build_fts_query, render},
 };
 
@@ -37,6 +39,13 @@ struct IndexTemplate {
     site_name: String,
     site_description: String,
     logo_url: String,
+    nav_menus: HashMap<String, String>,
+}
+
+impl IndexTemplate {
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
 }
 
 #[derive(Template)]
@@ -46,6 +55,13 @@ struct SearchTemplate {
     posts: Vec<Post>,
     post_url_type: String,
     site_name: String,
+    nav_menus: HashMap<String, String>,
+}
+
+impl SearchTemplate {
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
 }
 
 #[derive(Template)]
@@ -57,14 +73,15 @@ struct SetupTemplate {
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 pub async fn index(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let (posts, post_url_type, site_name, site_description, logo_url) = tokio::join!(
+    let (posts, post_url_type, site_name, site_description, logo_url, nav_menus) = tokio::join!(
         Post::find_recent_with_author(&pool, 10),
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
         Setting::site_description(&pool),
         Setting::logo_url(&pool),
+        NavMenu::prerender_all(&pool),
     );
-    render(IndexTemplate { posts: posts?, post_url_type, site_name, site_description, logo_url })
+    render(IndexTemplate { posts: posts?, post_url_type, site_name, site_description, logo_url, nav_menus })
 }
 
 pub async fn health() -> impl IntoResponse {
@@ -88,7 +105,7 @@ pub async fn search_page(
     let raw = params.q.as_deref().unwrap_or("").trim().to_string();
     let fts = build_fts_query(&raw);
 
-    let (posts, post_url_type, site_name) = tokio::join!(
+    let (posts, post_url_type, site_name, nav_menus) = tokio::join!(
         async {
             if fts.is_empty() {
                 Ok(vec![])
@@ -98,6 +115,7 @@ pub async fn search_page(
         },
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
+        NavMenu::prerender_all(&pool),
     );
 
     render(SearchTemplate {
@@ -105,6 +123,7 @@ pub async fn search_page(
         posts: posts?,
         post_url_type,
         site_name,
+        nav_menus,
     })
 }
 
@@ -116,6 +135,44 @@ struct PageShowTemplate {
     page: Page,
     site_name: String,
     html_content: String,
+    nav_menus: HashMap<String, String>,
+}
+
+impl PageShowTemplate {
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
+
+    fn the_breadcrumb(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_html};
+        let items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+            BreadcrumbItem { label: self.page.title.clone(), url: None },
+        ];
+        breadcrumb_html(&items)
+    }
+
+    fn breadcrumb_json_ld(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_json_ld};
+        let items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+            BreadcrumbItem { label: self.page.title.clone(), url: Some(format!("/pages/{}", self.page.slug)) },
+        ];
+        breadcrumb_json_ld(&items)
+    }
+}
+
+#[derive(Template)]
+#[template(path = "themes/default/404.html")]
+struct NotFoundTemplate {
+    site_name: String,
+    nav_menus: HashMap<String, String>,
+}
+
+impl NotFoundTemplate {
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
 }
 
 pub async fn show_page(
@@ -123,13 +180,14 @@ pub async fn show_page(
     Path(slug): Path<String>,
 ) -> Result<Response, AppError> {
     use crate::routes::posts::markdown_to_html_pub;
-    let (page, site_name) = tokio::join!(
+    let (page, site_name, nav_menus) = tokio::join!(
         Page::find_by_slug(&pool, &slug),
         Setting::site_name(&pool),
+        NavMenu::prerender_all(&pool),
     );
     let page = page?.ok_or(AppError::NotFound)?;
     let html_content = markdown_to_html_pub(&page.content);
-    render(PageShowTemplate { page, site_name, html_content })
+    render(PageShowTemplate { page, site_name, html_content, nav_menus })
 }
 
 // ─── Setup wizard ─────────────────────────────────────────────────────────────
@@ -175,15 +233,12 @@ pub async fn setup_submit(
 
 // ─── 404 fallback ─────────────────────────────────────────────────────────────
 
-#[derive(Template)]
-#[template(path = "themes/default/404.html")]
-struct NotFoundTemplate {
-    site_name: String,
-}
-
 pub async fn not_found_handler(State(pool): State<DbPool>) -> impl IntoResponse {
-    let site_name = Setting::site_name(&pool).await;
-    match (NotFoundTemplate { site_name }).render() {
+    let (site_name, nav_menus) = tokio::join!(
+        Setting::site_name(&pool),
+        NavMenu::prerender_all(&pool),
+    );
+    match (NotFoundTemplate { site_name, nav_menus }).render() {
         Ok(html) => (StatusCode::NOT_FOUND, Html(html)).into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
     }
