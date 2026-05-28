@@ -7,6 +7,7 @@ pub mod post_revision;
 pub mod setting;
 pub mod tag;
 pub mod user;
+pub mod widget;
 
 pub use category::{Category, CategoryWithCount};
 pub use media::Media;
@@ -18,3 +19,4 @@ pub use setting::Setting;
 pub use tag::{Tag, TagWithCount};
 #[allow(unused_imports)]
 pub use user::User;
+pub use widget::{Widget, WidgetArea};

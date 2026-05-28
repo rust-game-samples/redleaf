@@ -1,0 +1,279 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Widgets{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<style>
+  .widget-layout { display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; align-items: start; }
+  .area-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.08); margin-bottom: 1.25rem; }
+  .area-header { padding: .85rem 1.25rem; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; justify-content: space-between; }
+  .area-header h2 { margin: 0; font-size: .95rem; color: #374151; }
+  .area-slug { font-size: .78rem; color: #9ca3af; font-family: monospace; }
+  .widget-list-area { min-height: 60px; padding: .5rem; }
+  .widget-item { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: .7rem 1rem; margin-bottom: .4rem; display: flex; align-items: center; gap: .75rem; cursor: grab; user-select: none; }
+  .widget-item:active { cursor: grabbing; }
+  .widget-item.sortable-ghost { opacity: .4; }
+  .widget-drag { color: #9ca3af; font-size: 1.1rem; flex-shrink: 0; }
+  .widget-info { flex: 1; min-width: 0; }
+  .widget-type-badge { display: inline-block; padding: .15rem .45rem; border-radius: 4px; font-size: .72rem; font-weight: 600; background: #dbeafe; color: #1e40af; margin-left: .4rem; }
+  .widget-title-text { font-size: .9rem; font-weight: 500; color: #374151; }
+  .widget-summary { font-size: .78rem; color: #9ca3af; margin-top: .15rem; }
+  .widget-actions { display: flex; gap: .3rem; flex-shrink: 0; }
+  .widget-actions form { margin: 0; }
+  .empty-area { text-align: center; color: #9ca3af; padding: 1.5rem; font-size: .9rem; border: 2px dashed #e5e7eb; border-radius: 6px; }
+  .save-order-wrap { padding: .5rem 1rem 1rem; display: none; }
+  .panel-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.08); padding: 1.25rem; margin-bottom: 1.25rem; }
+  .panel-card h3 { margin: 0 0 1rem; font-size: .95rem; color: #374151; }
+  select { width: 100%; padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: .9rem; background: white; }
+  .settings-section { display: none; }
+  .settings-section.active { display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Widgets</h1>
+</div>
+
+<div class="widget-layout">
+  <!-- Left: Widget Areas -->
+  <div>
+    {% if areas_with_widgets.is_empty() %}
+    <p style="color:#9ca3af;">No widget areas found.</p>
+    {% else %}
+    {% for (area, widgets) in areas_with_widgets %}
+    <div class="area-card">
+      <div class="area-header">
+        <div>
+          <h2>{{ area.name }} <span class="area-slug">{{ area.slug }}</span></h2>
+        </div>
+        <form method="post" action="/admin/widgets/areas/{{ area.id }}/delete"
+              onsubmit="return confirm('Delete this area and all its widgets?')" style="margin:0;">
+          <button class="btn btn-danger" type="submit" style="font-size:.78rem;padding:.2rem .5rem;">Delete Area</button>
+        </form>
+      </div>
+
+      <div class="widget-list-area" id="area-{{ area.id }}" data-area="{{ area.id }}">
+        {% if widgets.is_empty() %}
+        <div class="empty-area">No widgets yet — add one from the panel →</div>
+        {% else %}
+        {% for w in widgets %}
+        <div class="widget-item" data-id="{{ w.id }}"
+             data-area="{{ w.area_id }}"
+             data-type="{{ w.widget_type }}"
+             data-title="{{ w.title }}"
+             data-count="{{ w.count_setting() }}"
+             data-text="{{ w.text_setting() }}">
+          <span class="widget-drag">⠿</span>
+          <div class="widget-info">
+            <div class="widget-title-text">
+              {% if w.title.is_empty() %}
+              <em style="color:#9ca3af">Untitled</em>
+              {% else %}
+              {{ w.title }}
+              {% endif %}
+              <span class="widget-type-badge">{{ w.widget_type }}</span>
+            </div>
+            {% if !w.settings_summary().is_empty() %}
+            <div class="widget-summary">{{ w.settings_summary() }}</div>
+            {% endif %}
+          </div>
+          <div class="widget-actions">
+            <button class="btn btn-secondary" style="font-size:.75rem;padding:.2rem .5rem;"
+                    onclick="openEdit(this.closest('.widget-item'))">Edit</button>
+            <form method="post" action="/admin/widgets/{{ w.id }}/delete"
+                  onsubmit="return confirm('Delete this widget?')" style="margin:0;">
+              <button class="btn btn-danger" type="submit" style="font-size:.75rem;padding:.2rem .5rem;">✕</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+
+      <div class="save-order-wrap" id="save-wrap-{{ area.id }}">
+        <button class="btn btn-primary" style="font-size:.85rem;" onclick="saveOrder({{ area.id }})">Save Order</button>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Add New Area -->
+    <div class="panel-card">
+      <h3>Add Widget Area</h3>
+      <form method="post" action="/admin/widgets/areas">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. Secondary Sidebar" required>
+        </div>
+        <div class="form-group" style="margin-bottom:.75rem;">
+          <label>Slug</label>
+          <input type="text" name="slug" placeholder="e.g. sidebar-2" required>
+        </div>
+        <button type="submit" class="btn btn-secondary">Add Area</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Right: Add / Edit Widget Panel -->
+  <div>
+    <div class="panel-card">
+      <h3 id="panel-title">Add Widget</h3>
+      <form method="post" id="widget-form" action="/admin/widgets">
+        <input type="hidden" name="_widget_id" id="edit-widget-id" value="">
+
+        <div class="form-group" id="area-group">
+          <label>Area</label>
+          <select name="area_id" id="area-select" required>
+            <option value="">— select area —</option>
+            {% for (area, _) in areas_with_widgets %}
+            <option value="{{ area.id }}">{{ area.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-group" id="type-group">
+          <label>Widget Type</label>
+          <select name="widget_type" id="type-select" onchange="onTypeChange()" required>
+            <option value="">— select type —</option>
+            <option value="recent_posts">Recent Posts</option>
+            <option value="categories">Categories</option>
+            <option value="tag_cloud">Tag Cloud</option>
+            <option value="text">Text / HTML</option>
+            <option value="search">Search Form</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Title <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+          <input type="text" name="title" id="widget-title" placeholder="Widget heading">
+        </div>
+
+        <div class="settings-section" id="settings-recent_posts">
+          <div class="form-group">
+            <label>Number of posts</label>
+            <input type="number" name="count" id="count-input" value="5" min="1" max="20" style="width:80px;">
+          </div>
+        </div>
+
+        <div class="settings-section" id="settings-text">
+          <div class="form-group">
+            <label>Content (HTML allowed)</label>
+            <textarea name="text_content" id="text-content" rows="6"
+                      style="font-family:monospace;font-size:.85rem;"></textarea>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+          <button type="submit" class="btn btn-primary" id="submit-btn">Add Widget</button>
+          <button type="button" class="btn btn-secondary" id="cancel-btn"
+                  style="display:none" onclick="resetPanel()">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel-card" style="font-size:.85rem;color:#6b7280;">
+      <strong style="color:#374151;">Template usage</strong>
+      <pre style="margin:.5rem 0 0;background:#f9fafb;padding:.6rem;border-radius:4px;font-size:.8rem;overflow-x:auto;">{{ "{{" }} self.render_widget_area("sidebar")|safe {{ "}}" }}</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── SortableJS ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.widget-list-area').forEach(function(el) {
+  var areaId = el.dataset.area;
+  Sortable.create(el, {
+    animation: 150,
+    handle: '.widget-drag',
+    ghostClass: 'sortable-ghost',
+    filter: '.empty-area',
+    onEnd: function() {
+      var wrap = document.getElementById('save-wrap-' + areaId);
+      if (wrap) wrap.style.display = 'block';
+    }
+  });
+});
+
+function saveOrder(areaId) {
+  var container = document.getElementById('area-' + areaId);
+  var ids = Array.from(container.querySelectorAll('.widget-item')).map(function(el) {
+    return el.dataset.id;
+  });
+  var form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/admin/widgets/reorder';
+  ids.forEach(function(id) {
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'ids[]';
+    input.value = id;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+}
+
+// ─── Type settings panels ────────────────────────────────────────────────────
+function onTypeChange() {
+  var type = document.getElementById('type-select').value;
+  document.querySelectorAll('.settings-section').forEach(function(el) {
+    el.classList.remove('active');
+  });
+  if (type) {
+    var panel = document.getElementById('settings-' + type);
+    if (panel) panel.classList.add('active');
+  }
+}
+
+// ─── Edit mode ───────────────────────────────────────────────────────────────
+function openEdit(item) {
+  var id    = item.dataset.id;
+  var area  = item.dataset.area;
+  var wtype = item.dataset.type;
+  var title = item.dataset.title;
+  var count = item.dataset.count || '5';
+  var text  = item.dataset.text  || '';
+
+  document.getElementById('panel-title').textContent  = 'Edit Widget';
+  document.getElementById('submit-btn').textContent   = 'Save Changes';
+  document.getElementById('cancel-btn').style.display = 'inline-block';
+  document.getElementById('edit-widget-id').value     = id;
+  document.getElementById('widget-form').action       = '/admin/widgets/' + id;
+
+  var areaSelect = document.getElementById('area-select');
+  areaSelect.value    = area;
+  areaSelect.disabled = true;
+
+  var typeSelect = document.getElementById('type-select');
+  typeSelect.value    = wtype;
+  typeSelect.disabled = true;
+  onTypeChange();
+
+  document.getElementById('widget-title').value  = title;
+  document.getElementById('count-input').value   = count;
+  document.getElementById('text-content').value  = text;
+
+  document.getElementById('panel-title').scrollIntoView({ behavior: 'smooth' });
+}
+
+function resetPanel() {
+  document.getElementById('panel-title').textContent  = 'Add Widget';
+  document.getElementById('submit-btn').textContent   = 'Add Widget';
+  document.getElementById('cancel-btn').style.display = 'none';
+  document.getElementById('edit-widget-id').value     = '';
+  document.getElementById('widget-form').action       = '/admin/widgets';
+  document.getElementById('area-select').disabled     = false;
+  document.getElementById('type-select').disabled     = false;
+  document.getElementById('area-select').value        = '';
+  document.getElementById('type-select').value        = '';
+  document.getElementById('widget-title').value       = '';
+  document.getElementById('count-input').value        = '5';
+  document.getElementById('text-content').value       = '';
+  document.querySelectorAll('.settings-section').forEach(function(el) {
+    el.classList.remove('active');
+  });
+}
+</script>
+{% endblock %}

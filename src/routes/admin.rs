@@ -32,6 +32,7 @@ use crate::{
         PostRevision,
         Setting,
         Tag, TagWithCount,
+        Widget, WidgetArea,
         post::{CreatePost, UpdatePost},
         user::{CreateUser, LoginUser},
         User,
@@ -295,6 +296,12 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/pages/{id}/delete", post(delete_page_handler))
         .route("/posts/{id}/revisions", get(list_revisions))
         .route("/posts/{id}/revisions/{rev_id}/restore", post(restore_revision))
+        .route("/widgets", get(list_widgets).post(create_widget))
+        .route("/widgets/reorder", post(reorder_widgets))
+        .route("/widgets/areas", post(create_widget_area))
+        .route("/widgets/areas/{id}/delete", post(delete_widget_area))
+        .route("/widgets/{id}", post(update_widget))
+        .route("/widgets/{id}/delete", post(delete_widget))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -1054,4 +1061,113 @@ async fn restore_revision(
         other => AppError::Database(other),
     })?;
     Ok(Redirect::to(&format!("/admin/posts/{}/edit", post_id)).into_response())
+}
+
+// ─── Widget handlers ──────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/widgets/index.html")]
+struct WidgetListTemplate {
+    areas_with_widgets: Vec<(WidgetArea, Vec<Widget>)>,
+}
+
+async fn list_widgets(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let areas = WidgetArea::find_all(&pool).await?;
+    let mut areas_with_widgets = Vec::new();
+    for area in areas {
+        let widgets = Widget::find_by_area(&pool, area.id).await?;
+        areas_with_widgets.push((area, widgets));
+    }
+    render(WidgetListTemplate { areas_with_widgets })
+}
+
+#[derive(Deserialize)]
+struct WidgetForm {
+    area_id: Option<i64>,
+    widget_type: Option<String>,
+    title: Option<String>,
+    count: Option<i64>,
+    text_content: Option<String>,
+}
+
+async fn create_widget(
+    State(pool): State<DbPool>,
+    Form(form): Form<WidgetForm>,
+) -> Result<Response, AppError> {
+    let area_id = form.area_id.ok_or_else(|| AppError::Internal("area_id required".into()))?;
+    let widget_type = form.widget_type.as_deref().unwrap_or("text");
+    let title = form.title.as_deref().unwrap_or("").trim().to_owned();
+    let settings = build_settings(widget_type, &form);
+    Widget::create(&pool, area_id, widget_type, &title, &settings).await?;
+    Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+async fn update_widget(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+    Form(form): Form<WidgetForm>,
+) -> Result<Response, AppError> {
+    let widget = Widget::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    let title = form.title.as_deref().unwrap_or("").trim().to_owned();
+    let settings = build_settings(&widget.widget_type, &form);
+    Widget::update(&pool, id, &title, &settings).await?;
+    Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+fn build_settings(widget_type: &str, form: &WidgetForm) -> String {
+    match widget_type {
+        "recent_posts" => {
+            let count = form.count.unwrap_or(5);
+            format!(r#"{{"count":{count}}}"#)
+        }
+        "text" => {
+            let content = form.text_content.as_deref().unwrap_or("");
+            serde_json::json!({"content": content}).to_string()
+        }
+        _ => "{}".to_string(),
+    }
+}
+
+async fn delete_widget(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Widget::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+#[derive(Deserialize)]
+struct ReorderForm {
+    #[serde(rename = "ids[]")]
+    ids: Vec<i64>,
+}
+
+async fn reorder_widgets(
+    State(pool): State<DbPool>,
+    Form(form): Form<ReorderForm>,
+) -> Result<Response, AppError> {
+    Widget::reorder(&pool, &form.ids).await?;
+    Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+#[derive(Deserialize)]
+struct WidgetAreaForm {
+    name: String,
+    slug: String,
+}
+
+async fn create_widget_area(
+    State(pool): State<DbPool>,
+    Form(form): Form<WidgetAreaForm>,
+) -> Result<Response, AppError> {
+    WidgetArea::create(&pool, &form.name, &form.slug).await?;
+    Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+async fn delete_widget_area(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    WidgetArea::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/widgets").into_response())
 }

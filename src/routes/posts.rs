@@ -7,11 +7,13 @@ use axum::{
 };
 use serde::Deserialize;
 
+use std::collections::HashMap;
+
 use crate::{
     db::DbPool,
     errors::AppError,
     filters,
-    models::{Post, PostWithAuthor, Setting, Tag},
+    models::{Post, PostWithAuthor, Setting, Tag, Widget},
     util::{render, Pagination, PER_PAGE},
 };
 
@@ -22,10 +24,10 @@ struct PostListTemplate {
     post_url_type: String,
     paging: Pagination,
     site_name: String,
+    widget_areas: HashMap<String, String>,
 }
 
 impl PostListTemplate {
-    /// Returns the permalink for a post according to the configured URL type.
     fn permalink_for(&self, post: &Post) -> String {
         if self.post_url_type == "id" {
             format!("/posts/{}", post.id)
@@ -34,14 +36,16 @@ impl PostListTemplate {
         }
     }
 
-    /// Returns the site root URL (always "/" — useful for templates).
     fn home_url(&self) -> &str {
         "/"
     }
 
-    /// Returns the site root URL (alias of home_url).
     fn site_url(&self) -> &str {
         "/"
+    }
+
+    fn render_widget_area(&self, slug: &str) -> &str {
+        self.widget_areas.get(slug).map(|s| s.as_str()).unwrap_or("")
     }
 }
 
@@ -53,6 +57,7 @@ struct PostShowTemplate {
     tags: Vec<Tag>,
     site_name: String,
     post_url_type: String,
+    widget_areas: HashMap<String, String>,
 }
 
 impl PostShowTemplate {
@@ -124,14 +129,16 @@ impl PostShowTemplate {
         )
     }
 
-    /// `home_url` — site root URL.
     fn home_url(&self) -> &str {
         "/"
     }
 
-    /// `site_url` — site root URL (alias of home_url).
     fn site_url(&self) -> &str {
         "/"
+    }
+
+    fn render_widget_area(&self, slug: &str) -> &str {
+        self.widget_areas.get(slug).map(|s| s.as_str()).unwrap_or("")
     }
 }
 
@@ -159,24 +166,26 @@ async fn list_posts(
 ) -> Result<Response, AppError> {
     let page = q.page.unwrap_or(1).max(1);
 
-    let (posts, total, post_url_type, site_name) = tokio::join!(
+    let (posts, total, post_url_type, site_name, widget_areas) = tokio::join!(
         Post::find_published_paginated(&pool, page, PER_PAGE),
         Post::count_published(&pool),
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
+        Widget::prerender_all(&pool),
     );
 
     let paging = Pagination::new(page, total?, PER_PAGE, "/posts");
-    render(PostListTemplate { posts: posts?, post_url_type, paging, site_name })
+    render(PostListTemplate { posts: posts?, post_url_type, paging, site_name, widget_areas })
 }
 
 async fn show_post(
     State(pool): State<DbPool>,
     Path(param): Path<String>,
 ) -> Result<Response, AppError> {
-    let (url_type, site_name) = tokio::join!(
+    let (url_type, site_name, widget_areas) = tokio::join!(
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
+        Widget::prerender_all(&pool),
     );
 
     let post = if url_type == "id" {
@@ -197,6 +206,7 @@ async fn show_post(
         tags,
         site_name,
         post_url_type: url_type,
+        widget_areas,
     })
 }
 
