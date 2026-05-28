@@ -154,14 +154,14 @@ WordPress に近づけるための機能追加タスク。
 
 ### コメントシステム
 
-- [ ] `comments` テーブル追加（`post_id` / `author_name` / `author_email` / `content` / `approved` / `parent_id`）
-- [ ] 公開投稿ページにコメント投稿フォーム追加
-- [ ] スレッドコメント（親子関係の再帰表示）
-- [ ] コメント数の投稿表示への反映
+- [x] `comments` テーブル追加（`post_id` / `author_name` / `author_email` / `content` / `approved` / `parent_id`）
+- [x] 公開投稿ページにコメント投稿フォーム追加
+- [x] スレッドコメント（親子関係の再帰表示）
+- [x] コメント数の投稿表示への反映
 
 ### コメントモデレーション
 
-- [ ] 管理画面: コメント一覧・承認/拒否/スパム操作 (`/admin/comments`)
+- [x] 管理画面: コメント一覧・承認/拒否/スパム操作 (`/admin/comments`)
 - [ ] 新規コメント通知メール（SMTP 設定）
 - [ ] Akismet 互換スパムフィルター API 連携
 

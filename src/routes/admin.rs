@@ -27,6 +27,7 @@ use crate::{
     middleware::has_capability,
     models::{
         Category, CategoryWithCount,
+        Comment, CommentWithPost,
         Media,
         NavMenu, NavMenuItem, LOCATIONS,
         Page, CreatePage, UpdatePage,
@@ -42,6 +43,15 @@ use crate::{
     },
     util::{render, slugify, Pagination, PER_PAGE},
 };
+
+// ─── Comment templates ────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/comments/list.html")]
+struct CommentListTemplate {
+    comments: Vec<CommentWithPost>,
+    pending_count: i64,
+}
 
 // ─── User templates ───────────────────────────────────────────────────────────
 
@@ -347,6 +357,10 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/users/{id}/role", post(update_user_role))
         .route("/profile", get(edit_profile_form).post(update_profile))
         .route("/profile/password", post(change_password))
+        .route("/comments", get(list_comments))
+        .route("/comments/{id}/approve", post(approve_comment))
+        .route("/comments/{id}/reject", post(reject_comment))
+        .route("/comments/{id}/spam", post(spam_comment))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -1432,6 +1446,40 @@ async fn resolve_item_fields(pool: &DbPool, form: &MenuItemForm) -> (String, Str
             ("custom".into(), label, url, None)
         }
     }
+}
+
+// ─── Comment moderation handlers ─────────────────────────────────────────────
+
+async fn list_comments(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let (comments, pending_count) = tokio::join!(
+        Comment::find_all_admin(&pool),
+        Comment::count_pending(&pool),
+    );
+    render(CommentListTemplate { comments: comments?, pending_count: pending_count? })
+}
+
+async fn approve_comment(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Comment::approve(&pool, id).await?;
+    Ok(Redirect::to("/admin/comments").into_response())
+}
+
+async fn reject_comment(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Comment::reject(&pool, id).await?;
+    Ok(Redirect::to("/admin/comments").into_response())
+}
+
+async fn spam_comment(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+) -> Result<Response, AppError> {
+    Comment::mark_spam(&pool, id).await?;
+    Ok(Redirect::to("/admin/comments").into_response())
 }
 
 // ─── User / role handlers ─────────────────────────────────────────────────────

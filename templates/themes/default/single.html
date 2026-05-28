@@ -59,7 +59,30 @@ body { background: #f5f5f5; }
 .widget-tag { display: inline-block; background: #f0f4f0; color: #2d5f3e; padding: .2rem .55rem; border-radius: 4px; font-size: .82rem; text-decoration: none; }
 .widget-tag:hover { background: #d1fae5; }
 .widget-search input { width: 100%; }
-@media (max-width: 700px) { .site-wrap { grid-template-columns: 1fr; } }
+/* Comments */
+.comments-section { margin-top: 2rem; }
+.comments-title { color: #2d5f3e; border-bottom: 2px solid #d1fae5; padding-bottom: .4rem; margin-bottom: 1.25rem; }
+.comment-notice { padding: .75rem 1rem; border-radius: 4px; margin-bottom: 1rem; font-size: .9rem; }
+.comment-notice.pending { background: #fef3c7; color: #92400e; }
+.comment-notice.error { background: #fee2e2; color: #991b1b; }
+.comment-list { list-style: none; margin: 0; padding: 0; }
+.comment-list .comment-list { padding-left: 1.5rem; margin-top: .75rem; }
+.comment { margin-bottom: 1rem; }
+.comment-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+.comment-avatar { width: 32px; height: 32px; border-radius: 50%; background: #d1fae5; color: #2d5f3e; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex-shrink: 0; }
+.comment-author { font-size: .9rem; color: #374151; }
+.comment-date { font-size: .78rem; color: #9ca3af; margin-left: .3rem; }
+.comment-reply-link { margin-left: auto; font-size: .8rem; color: #2d5f3e; text-decoration: none; cursor: pointer; }
+.comment-reply-link:hover { text-decoration: underline; }
+.comment-body { font-size: .9rem; line-height: 1.6; color: #374151; padding-left: 2.4rem; }
+.comment-form { margin-top: 2rem; background: #f9fafb; border-radius: 8px; padding: 1.5rem; }
+.comment-form h3 { margin-top: 0; color: #2d5f3e; font-size: 1rem; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: .75rem; }
+.form-row input { width: 100%; padding: .45rem .75rem; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: .9rem; }
+.comment-form textarea { width: 100%; padding: .45rem .75rem; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; font-size: .9rem; resize: vertical; min-height: 100px; margin-bottom: .75rem; box-sizing: border-box; }
+.comment-form button { background: #2d5f3e; color: white; border: none; padding: .5rem 1.25rem; border-radius: 4px; cursor: pointer; font-size: .9rem; font-family: inherit; font-weight: 500; }
+.comment-form button:hover { background: #234a30; }
+@media (max-width: 700px) { .site-wrap { grid-template-columns: 1fr; } .form-row { grid-template-columns: 1fr; } }
 {% endblock %}
 
 {% block body %}
@@ -95,10 +118,55 @@ body { background: #f5f5f5; }
       </div>
       {% endif %}
     </article>
+
+    <!-- Comments -->
+    <div class="comments-section">
+      {% if let Some(notice) = &comment_notice %}
+      <div class="comment-notice {% if notice.contains("awaiting") %}pending{% else %}error{% endif %}">{{ notice }}</div>
+      {% endif %}
+
+      {% if comment_count > 0 %}
+      <h2 class="comments-title">{{ comment_count }} Comment{% if comment_count != 1 %}s{% endif %}</h2>
+      {{ self.render_comments()|safe }}
+      {% endif %}
+
+      <div class="comment-form" id="comment-form">
+        <h3>Leave a Comment</h3>
+        <form method="post" action="/posts/{{ post.slug }}/comment" id="comment-form-el">
+          <input type="hidden" name="parent_id" id="comment-parent-id" value="">
+          <div class="form-row">
+            <input type="text" name="author_name" placeholder="Name *" required>
+            <input type="email" name="author_email" placeholder="Email (optional)">
+          </div>
+          <textarea name="content" placeholder="Write your comment…" required></textarea>
+          <div style="display:flex;align-items:center;gap:1rem;">
+            <button type="submit">Post Comment</button>
+            <span id="reply-indicator" style="font-size:.85rem;color:#6b7280;display:none;">
+              Replying to a comment — <a href="#" onclick="clearReply();return false;" style="color:#2d5f3e;">cancel</a>
+            </span>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <aside class="sidebar">
     {{ self.render_widget_area("sidebar")|safe }}
   </aside>
 </div>
+<script>
+document.querySelectorAll('.comment-reply-link').forEach(function(a) {
+  a.addEventListener('click', function(e) {
+    e.preventDefault();
+    var parentId = this.dataset.parent;
+    document.getElementById('comment-parent-id').value = parentId;
+    document.getElementById('reply-indicator').style.display = 'inline';
+    document.getElementById('comment-form').scrollIntoView({behavior:'smooth'});
+  });
+});
+function clearReply() {
+  document.getElementById('comment-parent-id').value = '';
+  document.getElementById('reply-indicator').style.display = 'none';
+}
+</script>
 {% endblock %}

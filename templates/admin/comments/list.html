@@ -1,0 +1,71 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Comments{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Comments</h1>
+  {% if pending_count > 0 %}
+  <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.9rem;padding:.3rem .75rem;">{{ pending_count }} pending</span>
+  {% endif %}
+</div>
+
+{% if comments.is_empty() %}
+<div class="card"><p class="empty">No comments yet.</p></div>
+{% else %}
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Author</th>
+        <th>Comment</th>
+        <th>Post</th>
+        <th>Status</th>
+        <th>Date</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in comments %}
+      <tr style="{% if !c.approved && !c.spam %}background:#fffbeb;{% endif %}{% if c.spam %}background:#fff1f2;opacity:.75;{% endif %}">
+        <td>
+          <strong>{{ c.author_name }}</strong>
+          {% if !c.author_email.is_empty() %}
+          <br><span style="font-size:.8rem;color:#6b7280;">{{ c.author_email }}</span>
+          {% endif %}
+          {% if let Some(pid) = c.parent_id %}
+          <br><span style="font-size:.78rem;color:#9ca3af;">↳ reply to #{{ pid }}</span>
+          {% endif %}
+        </td>
+        <td style="max-width:280px;">
+          <span style="font-size:.88rem;color:#374151;white-space:pre-wrap;">{{ c.content|truncate(120) }}</span>
+        </td>
+        <td style="font-size:.85rem;">
+          <a href="/posts/{{ c.post_slug }}" target="_blank" style="color:#2d5f3e;">{{ c.post_title|truncate(40) }}</a>
+        </td>
+        <td>
+          {% if c.spam %}
+          <span class="badge" style="background:#fee2e2;color:#991b1b;">Spam</span>
+          {% else if c.approved %}
+          <span class="badge published">Approved</span>
+          {% else %}
+          <span class="badge" style="background:#fef3c7;color:#92400e;">Pending</span>
+          {% endif %}
+        </td>
+        <td style="font-size:.82rem;color:#6b7280;white-space:nowrap;">{{ c.created_at | rl_date("%Y-%m-%d") }}</td>
+        <td class="acts">
+          {% if !c.approved || c.spam %}
+          <form method="post" action="/admin/comments/{{ c.id }}/approve"><button class="btn btn-primary" style="padding:.25rem .6rem;font-size:.8rem;">Approve</button></form>
+          {% endif %}
+          {% if !c.spam %}
+          <form method="post" action="/admin/comments/{{ c.id }}/spam"><button class="btn btn-warning" style="padding:.25rem .6rem;font-size:.8rem;">Spam</button></form>
+          {% endif %}
+          <form method="post" action="/admin/comments/{{ c.id }}/reject" onsubmit="return confirm('Delete this comment?')"><button class="btn btn-danger" style="padding:.25rem .6rem;font-size:.8rem;">Delete</button></form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

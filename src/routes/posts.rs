@@ -1,11 +1,11 @@
 use askama::Template;
 use axum::{
-    extract::{Path, Query, State},
-    response::Response,
-    routing::get,
+    extract::{Form, Path, Query, State},
+    response::{IntoResponse, Redirect, Response},
+    routing::{get, post},
     Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use std::collections::HashMap;
 
@@ -13,7 +13,7 @@ use crate::{
     db::DbPool,
     errors::AppError,
     filters,
-    models::{NavMenu, Post, PostWithAuthor, Setting, Tag, Widget},
+    models::{Comment, NavMenu, Post, PostWithAuthor, Setting, Tag, Widget},
     util::{render, Pagination, PER_PAGE},
 };
 
@@ -69,6 +69,9 @@ struct PostShowTemplate {
     post: PostWithAuthor,
     html_content: String,
     tags: Vec<Tag>,
+    comments: Vec<Comment>,
+    comment_count: i64,
+    comment_notice: Option<String>,
     site_name: String,
     post_url_type: String,
     widget_areas: HashMap<String, String>,
@@ -183,6 +186,10 @@ impl PostShowTemplate {
         items.push(BreadcrumbItem { label: self.post.title.clone(), url: Some(self.the_permalink()) });
         breadcrumb_json_ld(&items)
     }
+
+    fn render_comments(&self) -> String {
+        Comment::render_thread(&self.comments, None)
+    }
 }
 
 fn escape_html(s: &str) -> String {
@@ -195,12 +202,14 @@ fn escape_html(s: &str) -> String {
 #[derive(Deserialize, Default)]
 struct PageQuery {
     page: Option<i64>,
+    comment: Option<String>,
 }
 
 pub fn post_routes() -> Router<DbPool> {
     Router::new()
         .route("/", get(list_posts))
         .route("/{param}", get(show_post))
+        .route("/{param}/comment", post(submit_comment))
 }
 
 async fn list_posts(
@@ -225,6 +234,7 @@ async fn list_posts(
 async fn show_post(
     State(pool): State<DbPool>,
     Path(param): Path<String>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response, AppError> {
     let (url_type, site_name, widget_areas, nav_menus) = tokio::join!(
         Setting::post_url_type(&pool),
@@ -243,17 +253,81 @@ async fn show_post(
     };
 
     let post = post.ok_or(AppError::NotFound)?;
-    let tags = Tag::find_by_post(&pool, post.id).await?;
+    let (tags, comments, comment_count) = tokio::join!(
+        Tag::find_by_post(&pool, post.id),
+        Comment::find_by_post(&pool, post.id),
+        Comment::count_by_post(&pool, post.id),
+    );
     let html_content = markdown_to_html(&post.content);
+    let comment_notice = match q.comment.as_deref() {
+        Some("pending") => Some("Your comment has been submitted and is awaiting moderation.".into()),
+        Some("error") => Some("There was a problem submitting your comment. Please try again.".into()),
+        _ => None,
+    };
     render(PostShowTemplate {
         post,
         html_content,
-        tags,
+        tags: tags?,
+        comments: comments?,
+        comment_count: comment_count?,
+        comment_notice,
         site_name,
         post_url_type: url_type,
         widget_areas,
         nav_menus,
     })
+}
+
+fn empty_string_as_none<'de, D>(d: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s = Option::<String>::deserialize(d)?;
+    match s.as_deref() {
+        None | Some("") => Ok(None),
+        Some(v) => v.parse::<i64>().map(Some).map_err(serde::de::Error::custom),
+    }
+}
+
+#[derive(Deserialize)]
+struct CommentForm {
+    author_name: String,
+    author_email: Option<String>,
+    content: String,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    parent_id: Option<i64>,
+}
+
+async fn submit_comment(
+    State(pool): State<DbPool>,
+    Path(param): Path<String>,
+    Form(form): Form<CommentForm>,
+) -> Result<Response, AppError> {
+    let url_type = Setting::post_url_type(&pool).await;
+    let post = if url_type == "id" {
+        let id = param.parse::<i64>().map_err(|_| AppError::NotFound)?;
+        Post::find_by_id_with_author(&pool, id).await?
+    } else {
+        Post::find_by_slug_with_author(&pool, &param).await?
+    };
+    let post = post.ok_or(AppError::NotFound)?;
+    let redirect_base = if url_type == "id" {
+        format!("/posts/{}", post.id)
+    } else {
+        format!("/posts/{}", post.slug)
+    };
+
+    let name = form.author_name.trim();
+    let content = form.content.trim();
+    if name.is_empty() || content.is_empty() {
+        return Ok(Redirect::to(&format!("{}?comment=error", redirect_base)).into_response());
+    }
+
+    let email = form.author_email.as_deref().unwrap_or("").trim();
+    match Comment::create(&pool, post.id, form.parent_id, name, email, content).await {
+        Ok(_) => Ok(Redirect::to(&format!("{}?comment=pending", redirect_base)).into_response()),
+        Err(_) => Ok(Redirect::to(&format!("{}?comment=error", redirect_base)).into_response()),
+    }
 }
 
 pub fn markdown_to_html_pub(markdown: &str) -> String {

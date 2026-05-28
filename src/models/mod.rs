@@ -1,4 +1,5 @@
 pub mod category;
+pub mod comment;
 pub mod media;
 pub mod page;
 pub mod post;
@@ -11,6 +12,7 @@ pub mod nav_menu;
 pub mod widget;
 
 pub use category::{Category, CategoryWithCount};
+pub use comment::{Comment, CommentWithPost};
 pub use media::Media;
 pub use nav_menu::{NavMenu, NavMenuItem, LOCATIONS};
 pub use page::{Page, CreatePage, UpdatePage};
