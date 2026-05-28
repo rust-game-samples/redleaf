@@ -24,6 +24,7 @@ use crate::{
     db::DbPool,
     errors::AppError,
     filters,
+    hooks,
     middleware::has_capability,
     models::{
         Category, CategoryWithCount,
@@ -400,6 +401,8 @@ async fn login_submit(
     let token = generate_token(&user)
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+    hooks::do_action("on_user_login");
+
     let cookie = format!(
         "session={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=604800",
         token
@@ -565,8 +568,13 @@ async fn create_post(
     let mut payload = form_to_create(&form);
     payload.author_id = Some(claims.sub);
 
+    hooks::do_action("before_post_save");
+    let published = payload.published;
     match Post::create(&pool, payload).await {
         Ok(post) => {
+            if published {
+                hooks::do_action("after_post_publish");
+            }
             let tag_ids = resolve_tags(&pool, tag_input.as_deref()).await?;
             Post::set_tags(&pool, post.id, &tag_ids).await?;
             PostMeta::replace_all(&pool, post.id, &meta_pairs).await?;
@@ -639,12 +647,13 @@ async fn update_post(
         .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M").ok())
         .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc));
 
+    let being_published = form.published.is_some();
     let payload = UpdatePost {
         title: Some(form.title.clone()),
         slug: Some(slug),
         content: Some(form.content.clone()),
         excerpt: Some(form.excerpt.clone().filter(|s| !s.trim().is_empty())),
-        published: Some(form.published.is_some()),
+        published: Some(being_published),
         sticky: Some(form.sticky.is_some()),
         category_id: Some(form.category_id),
         featured_image_id: Some(form.featured_image_id),
@@ -653,10 +662,14 @@ async fn update_post(
         seo_description: Some(form.seo_description.trim().to_string()),
     };
 
+    hooks::do_action("before_post_save");
     let post = Post::update(&pool, id, payload).await.map_err(|e| match e {
         sqlx::Error::RowNotFound => AppError::NotFound,
         other => AppError::Database(other),
     })?;
+    if being_published {
+        hooks::do_action("after_post_publish");
+    }
     let tag_ids = resolve_tags(&pool, form.tags.as_deref()).await?;
     Post::set_tags(&pool, post.id, &tag_ids).await?;
     PostMeta::replace_all(&pool, post.id, &meta_pairs_from_form(&form)).await?;

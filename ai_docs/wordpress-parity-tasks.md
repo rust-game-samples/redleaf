@@ -201,16 +201,16 @@ WordPress に近づけるための機能追加タスク。
 
 ### フックシステム (Actions / Filters)
 
-- [ ] `ActionRegistry` — `do_action(hook, ...)` / `add_action(hook, callback, priority)`
-- [ ] `FilterRegistry` — `apply_filters(hook, value)` / `add_filter(hook, callback, priority)`
-- [ ] ビルトインフック: `before_post_save` / `after_post_publish` / `on_user_login` など
+- [x] `ActionRegistry` — `do_action(hook, ...)` / `add_action(hook, callback, priority)`
+- [x] `FilterRegistry` — `apply_filters(hook, value)` / `add_filter(hook, callback, priority)`
+- [x] ビルトインフック: `before_post_save` / `after_post_publish` / `on_user_login`（各ハンドラに配線済み）
 - [ ] WASM プラグインランタイム（将来的な外部プラグイン対応）
 
 ### ショートコード API
 
-- [ ] `ShortcodeRegistry` — `[gallery]` / `[caption]` / `[embed]` などの解析・実行
-- [ ] ビルトインショートコード: `[gallery ids="1,2,3"]` / `[caption]` / `[audio src="..."]`
-- [ ] コンテンツレンダリング時に自動展開
+- [x] `ShortcodeRegistry` — `[gallery]` / `[caption]` / `[audio]` などの解析・実行（`src/shortcodes.rs`）
+- [x] ビルトインショートコード: `[gallery ids="1,2,3"]` / `[caption]` / `[audio src="..."]`
+- [x] コンテンツレンダリング時に自動展開（`markdown_to_html` パイプライン統合）
 
 ### カスタム投稿タイプ (Custom Post Types)
 

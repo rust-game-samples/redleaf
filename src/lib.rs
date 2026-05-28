@@ -7,6 +7,7 @@ pub mod hooks;
 pub mod middleware;
 pub mod models;
 pub mod routes;
+pub mod shortcodes;
 pub mod util;
 
 use axum::{middleware as axum_middleware, routing::get, Router};

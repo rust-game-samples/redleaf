@@ -372,14 +372,19 @@ pub fn markdown_to_html_pub(markdown: &str) -> String {
 fn markdown_to_html(markdown: &str) -> String {
     use pulldown_cmark::{html, Options, Parser};
 
-    let normalized = markdown.replace("\r\n", "\n");
+    // 1. Expand shortcodes before markdown parsing
+    let expanded = crate::shortcodes::expand_shortcodes(markdown);
+    let normalized = expanded.replace("\r\n", "\n");
 
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
 
+    // 2. Render markdown to HTML
     let parser = Parser::new_ext(&normalized, options);
     let mut output = String::new();
     html::push_html(&mut output, parser);
-    output
+
+    // 3. Apply the_content filter (allows hooks to transform rendered HTML)
+    crate::hooks::apply_filters("the_content", output)
 }
