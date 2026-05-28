@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Import{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1>Import WordPress WXR</h1></div>
+
+<div class="card" style="max-width:640px;">
+  <p style="color:#6b7280;font-size:.9rem;margin-top:0;">
+    Upload a WordPress export file (<code>.xml</code>) generated via
+    <strong>Tools → Export</strong> in your WordPress admin.
+    Existing posts with the same slug are automatically renamed.
+  </p>
+  <form id="import-form" method="post" action="/admin/import" enctype="multipart/form-data">
+    <div class="form-group">
+      <label for="wxr-file">WXR file (.xml)</label>
+      <input type="file" id="wxr-file" name="file" accept=".xml,text/xml,application/xml" required
+             style="width:100%;padding:.45rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-size:.9rem;font-family:inherit;">
+    </div>
+    <button id="import-btn" type="submit" class="btn btn-primary">Import</button>
+    <span id="import-status" style="margin-left:.75rem;font-size:.88rem;color:#6b7280;display:none;">
+      Importing… please wait.
+    </span>
+  </form>
+</div>
+
+{% if let Some(r) = result %}
+<div class="card" style="margin-top:1.5rem;">
+  <h2 style="margin-top:0;font-size:1rem;color:#374151;">Import Results</h2>
+  <table style="width:auto;">
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th style="text-align:right;">Imported</th>
+        <th style="text-align:right;">Skipped</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Categories</td>
+        <td style="text-align:right;color:#059669;font-weight:600;">{{ r.cats_imported }}</td>
+        <td style="text-align:right;color:#9ca3af;">{{ r.cats_skipped }}</td>
+      </tr>
+      <tr>
+        <td>Tags</td>
+        <td style="text-align:right;color:#059669;font-weight:600;">{{ r.tags_imported }}</td>
+        <td style="text-align:right;color:#9ca3af;">{{ r.tags_skipped }}</td>
+      </tr>
+      <tr>
+        <td>Posts</td>
+        <td style="text-align:right;color:#059669;font-weight:600;">{{ r.posts_imported }}</td>
+        <td style="text-align:right;color:#9ca3af;">{{ r.posts_skipped }}</td>
+      </tr>
+      <tr>
+        <td>Pages</td>
+        <td style="text-align:right;color:#059669;font-weight:600;">{{ r.pages_imported }}</td>
+        <td style="text-align:right;color:#9ca3af;">{{ r.pages_skipped }}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% if !r.errors.is_empty() %}
+  <details style="margin-top:1rem;">
+    <summary style="cursor:pointer;font-size:.88rem;color:#92400e;">
+      {{ r.errors.len() }} warning{% if r.errors.len() != 1 %}s{% endif %}
+    </summary>
+    <ul style="margin:.5rem 0 0;padding-left:1.25rem;">
+      {% for e in &r.errors %}
+      <li style="font-size:.82rem;color:#92400e;">{{ e }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  <div style="margin-top:1rem;">
+    <a href="/admin/posts" class="btn btn-secondary">View Posts</a>
+    <a href="/admin/pages" class="btn btn-secondary" style="margin-left:.5rem;">View Pages</a>
+  </div>
+</div>
+{% endif %}
+
+{% if let Some(e) = parse_error %}
+<div class="alert-error" style="margin-top:1rem;">{{ e }}</div>
+{% endif %}
+
+<script>
+document.getElementById('import-form').addEventListener('submit', function() {
+  document.getElementById('import-btn').disabled = true;
+  document.getElementById('import-status').style.display = 'inline';
+});
+</script>
+{% endblock %}

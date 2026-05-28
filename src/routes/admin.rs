@@ -1,12 +1,13 @@
 use askama::Template;
 use axum::{
+    body::Body,
     extract::{Extension, Form, Multipart, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 fn empty_string_as_none<'de, D>(d: D) -> Result<Option<i64>, D::Error>
 where
@@ -48,6 +49,34 @@ use crate::{
     },
     util::{render, slugify, Pagination, PER_PAGE},
 };
+
+// ─── Export template ─────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/export.html")]
+struct ExportPageTemplate;
+
+// ─── Import template ─────────────────────────────────────────────────────────
+
+#[derive(Default)]
+struct ImportResult {
+    cats_imported: usize,
+    cats_skipped: usize,
+    tags_imported: usize,
+    tags_skipped: usize,
+    posts_imported: usize,
+    posts_skipped: usize,
+    pages_imported: usize,
+    pages_skipped: usize,
+    errors: Vec<String>,
+}
+
+#[derive(Template)]
+#[template(path = "admin/import.html")]
+struct ImportTemplate {
+    result: Option<ImportResult>,
+    parse_error: Option<String>,
+}
 
 // ─── Comment templates ────────────────────────────────────────────────────────
 
@@ -401,6 +430,11 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/comments/{id}/approve", post(approve_comment))
         .route("/comments/{id}/reject", post(reject_comment))
         .route("/comments/{id}/spam", post(spam_comment))
+        .route("/export", get(export_page))
+        .route("/export/json", get(export_json))
+        .route("/export/wxr", get(export_wxr))
+        .route("/export/db", get(export_db))
+        .route("/import", get(import_page).post(import_wxr))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -1896,4 +1930,517 @@ async fn change_password(
     User::change_password(&pool, claims.sub, &form.new_password).await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     render(ProfileTemplate { pw_saved: Some("Password changed.".into()), ..profile_data })
+}
+
+// ─── Export / Backup handlers ─────────────────────────────────────────────────
+
+async fn export_page() -> Result<Response, AppError> {
+    render(ExportPageTemplate)
+}
+
+// ── JSON export ───────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct JsonExport {
+    version: &'static str,
+    exported_at: String,
+    site_name: String,
+    site_description: String,
+    posts: Vec<PostExportItem>,
+    pages: Vec<crate::models::Page>,
+    categories: Vec<crate::models::Category>,
+    tags: Vec<Tag>,
+    media: Vec<crate::models::Media>,
+    users: Vec<User>,
+}
+
+#[derive(Serialize)]
+struct PostExportItem {
+    #[serde(flatten)]
+    post: crate::models::Post,
+    tags: Vec<String>,
+    meta: Vec<(String, String)>,
+}
+
+async fn export_json(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let (posts, pages, cats, tags, media, users) = tokio::join!(
+        Post::find_all_admin(&pool),
+        crate::models::Page::find_all(&pool),
+        Category::find_all(&pool),
+        Tag::find_all_with_count(&pool),
+        crate::models::Media::find_all(&pool),
+        User::find_all(&pool),
+    );
+
+    // Bulk-fetch all post tags and meta to avoid N+1
+    let tag_rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT pt.post_id, t.name FROM post_tags pt JOIN tags t ON t.id = pt.tag_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    let meta_rows: Vec<(i64, String, String)> = sqlx::query_as(
+        "SELECT post_id, meta_key, meta_value FROM post_meta ORDER BY post_id, meta_key",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    let mut tags_by_post: std::collections::HashMap<i64, Vec<String>> = Default::default();
+    for (pid, name) in tag_rows {
+        tags_by_post.entry(pid).or_default().push(name);
+    }
+    let mut meta_by_post: std::collections::HashMap<i64, Vec<(String, String)>> = Default::default();
+    for (pid, k, v) in meta_rows {
+        meta_by_post.entry(pid).or_default().push((k, v));
+    }
+
+    let post_items: Vec<PostExportItem> = posts?
+        .into_iter()
+        .map(|p| {
+            let tags = tags_by_post.remove(&p.id).unwrap_or_default();
+            let meta = meta_by_post.remove(&p.id).unwrap_or_default();
+            PostExportItem { post: p, tags, meta }
+        })
+        .collect();
+
+    let (site_name, site_description) = tokio::join!(
+        Setting::site_name(&pool),
+        Setting::site_description(&pool),
+    );
+
+    let export = JsonExport {
+        version: "1.0",
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        site_name,
+        site_description,
+        posts: post_items,
+        pages: pages?,
+        categories: cats?,
+        tags: tags?.into_iter().map(|t| Tag { id: t.id, name: t.name, slug: t.slug, created_at: t.created_at }).collect(),
+        media: media?,
+        users: users?,
+    };
+
+    let json = serde_json::to_string_pretty(&export)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let date = chrono::Utc::now().format("%Y%m%d");
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json; charset=utf-8")
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"redleaf-export-{date}.json\""))
+        .body(Body::from(json))
+        .unwrap())
+}
+
+// ── WXR export ────────────────────────────────────────────────────────────────
+
+async fn export_wxr(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let (posts, pages, cats, tags, site_name, site_description) = tokio::join!(
+        Post::find_all_admin_with_author(&pool),
+        crate::models::Page::find_all(&pool),
+        Category::find_all(&pool),
+        Tag::find_all_with_count(&pool),
+        Setting::site_name(&pool),
+        Setting::site_description(&pool),
+    );
+
+    let tag_rows: Vec<(i64, String, String)> = sqlx::query_as(
+        "SELECT pt.post_id, t.name, t.slug FROM post_tags pt JOIN tags t ON t.id = pt.tag_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    let meta_rows: Vec<(i64, String, String)> = sqlx::query_as(
+        "SELECT post_id, meta_key, meta_value FROM post_meta ORDER BY post_id, meta_key",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    let mut tags_by_post: std::collections::HashMap<i64, Vec<(String, String)>> = Default::default();
+    for (pid, name, slug) in tag_rows {
+        tags_by_post.entry(pid).or_default().push((name, slug));
+    }
+    let mut meta_by_post: std::collections::HashMap<i64, Vec<(String, String)>> = Default::default();
+    for (pid, k, v) in meta_rows {
+        meta_by_post.entry(pid).or_default().push((k, v));
+    }
+
+    let mut xml = String::with_capacity(64 * 1024);
+    xml.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:wfw="http://wellformedweb.org/CommentAPI/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+"#);
+    xml.push_str(&format!("  <title>{}</title>\n", xe(&site_name)));
+    xml.push_str(&format!("  <description>{}</description>\n", xe(&site_description)));
+    xml.push_str("  <wp:wxr_version>1.2</wp:wxr_version>\n");
+    xml.push_str(&format!("  <pubDate>{}</pubDate>\n",
+        chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000")));
+
+    // Categories
+    for cat in cats? {
+        xml.push_str(&format!(
+            "  <wp:category>\n    <wp:term_id>{}</wp:term_id>\n    <wp:category_nicename>{}</wp:category_nicename>\n    <wp:cat_name><![CDATA[{}]]></wp:cat_name>\n  </wp:category>\n",
+            cat.id, xe(&cat.slug), cdata_escape(&cat.name)
+        ));
+    }
+
+    // Tags
+    for tag in tags? {
+        xml.push_str(&format!(
+            "  <wp:tag>\n    <wp:term_id>{}</wp:term_id>\n    <wp:tag_slug>{}</wp:tag_slug>\n    <wp:tag_name><![CDATA[{}]]></wp:tag_name>\n  </wp:tag>\n",
+            tag.id, xe(&tag.slug), cdata_escape(&tag.name)
+        ));
+    }
+
+    // Posts
+    for post in posts? {
+        let pub_date = post.created_at.format("%a, %d %b %Y %H:%M:%S +0000").to_string();
+        let wp_date  = post.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+        let status   = if post.published { "publish" } else { "draft" };
+        let author   = post.author_username.as_deref().unwrap_or("admin");
+
+        xml.push_str("  <item>\n");
+        xml.push_str(&format!("    <title>{}</title>\n", xe(&post.title)));
+        xml.push_str(&format!("    <pubDate>{pub_date}</pubDate>\n"));
+        xml.push_str(&format!("    <dc:creator><![CDATA[{author}]]></dc:creator>\n"));
+        xml.push_str(&format!("    <content:encoded><![CDATA[{}]]></content:encoded>\n", cdata_escape(&post.content)));
+        if let Some(exc) = &post.excerpt {
+            xml.push_str(&format!("    <excerpt:encoded><![CDATA[{}]]></excerpt:encoded>\n", cdata_escape(exc)));
+        }
+        xml.push_str(&format!("    <wp:post_id>{}</wp:post_id>\n", post.id));
+        xml.push_str(&format!("    <wp:post_date>{wp_date}</wp:post_date>\n"));
+        xml.push_str(&format!("    <wp:post_date_gmt>{wp_date}</wp:post_date_gmt>\n"));
+        xml.push_str(&format!("    <wp:post_name>{}</wp:post_name>\n", xe(&post.slug)));
+        xml.push_str(&format!("    <wp:status>{status}</wp:status>\n"));
+        xml.push_str(&format!("    <wp:is_sticky>{}</wp:is_sticky>\n", if post.sticky { 1 } else { 0 }));
+        xml.push_str("    <wp:post_type>post</wp:post_type>\n");
+        xml.push_str("    <wp:comment_status>open</wp:comment_status>\n");
+
+        // Category
+        if let (Some(cname), Some(cslug)) = (&post.category_name, &post.category_slug) {
+            xml.push_str(&format!(
+                "    <category domain=\"category\" nicename=\"{}\"><![CDATA[{}]]></category>\n",
+                xe(cslug), cdata_escape(cname)
+            ));
+        }
+
+        // Tags
+        if let Some(ptags) = tags_by_post.get(&post.id) {
+            for (tname, tslug) in ptags {
+                xml.push_str(&format!(
+                    "    <category domain=\"post_tag\" nicename=\"{}\"><![CDATA[{}]]></category>\n",
+                    xe(tslug), cdata_escape(tname)
+                ));
+            }
+        }
+
+        // Post meta
+        if let Some(metas) = meta_by_post.get(&post.id) {
+            for (k, v) in metas {
+                xml.push_str(&format!(
+                    "    <wp:postmeta>\n      <wp:meta_key><![CDATA[{}]]></wp:meta_key>\n      <wp:meta_value><![CDATA[{}]]></wp:meta_value>\n    </wp:postmeta>\n",
+                    cdata_escape(k), cdata_escape(v)
+                ));
+            }
+        }
+
+        xml.push_str("  </item>\n");
+    }
+
+    // Pages
+    for page in pages? {
+        let wp_date = page.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
+        let pub_date = page.created_at.format("%a, %d %b %Y %H:%M:%S +0000").to_string();
+        let status = if page.is_published() { "publish" } else { "draft" };
+        xml.push_str("  <item>\n");
+        xml.push_str(&format!("    <title>{}</title>\n", xe(&page.title)));
+        xml.push_str(&format!("    <pubDate>{pub_date}</pubDate>\n"));
+        xml.push_str(&format!("    <content:encoded><![CDATA[{}]]></content:encoded>\n", cdata_escape(&page.content)));
+        xml.push_str(&format!("    <wp:post_id>{}</wp:post_id>\n", page.id));
+        xml.push_str(&format!("    <wp:post_date>{wp_date}</wp:post_date>\n"));
+        xml.push_str(&format!("    <wp:post_date_gmt>{wp_date}</wp:post_date_gmt>\n"));
+        xml.push_str(&format!("    <wp:post_name>{}</wp:post_name>\n", xe(&page.slug)));
+        xml.push_str(&format!("    <wp:status>{status}</wp:status>\n"));
+        xml.push_str("    <wp:post_type>page</wp:post_type>\n");
+        xml.push_str(&format!("    <wp:post_parent>{}</wp:post_parent>\n", page.parent_id.unwrap_or(0)));
+        xml.push_str("  </item>\n");
+    }
+
+    xml.push_str("</channel>\n</rss>");
+
+    let date = chrono::Utc::now().format("%Y%m%d");
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/xml; charset=utf-8")
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"redleaf-export-{date}.xml\""))
+        .body(Body::from(xml))
+        .unwrap())
+}
+
+// ── SQLite backup ─────────────────────────────────────────────────────────────
+
+async fn export_db() -> Result<Response, AppError> {
+    let url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:redleaf.db".to_string());
+    let path = url
+        .trim_start_matches("sqlite:")
+        .trim_start_matches("//")
+        .trim_start_matches('/');
+    // Re-add leading slash for absolute paths (if the original had sqlite:///...)
+    let path = if url.contains("sqlite:///") {
+        format!("/{path}")
+    } else {
+        path.to_string()
+    };
+
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| AppError::Internal(format!("Could not read database file: {e}")))?;
+
+    let date = chrono::Utc::now().format("%Y%m%d");
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/x-sqlite3")
+        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"redleaf-{date}.db\""))
+        .body(Body::from(bytes))
+        .unwrap())
+}
+
+// ── XML helpers ───────────────────────────────────────────────────────────────
+
+/// Escape text for use in XML element content (not CDATA).
+fn xe(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+}
+
+/// Escape content destined for a CDATA section (only `]]>` is special).
+fn cdata_escape(s: &str) -> String {
+    s.replace("]]>", "]]]]><![CDATA[>")
+}
+
+// ─── Import handlers ──────────────────────────────────────────────────────────
+
+async fn import_page() -> Result<Response, AppError> {
+    render(ImportTemplate { result: None, parse_error: None })
+}
+
+async fn import_wxr(
+    State(pool): State<DbPool>,
+    Extension(cache): Extension<Arc<PageCache>>,
+    mut multipart: Multipart,
+) -> Result<Response, AppError> {
+    // Read the uploaded file.
+    let mut file_bytes: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        if field.name() == Some("file") {
+            let bytes = field.bytes().await.map_err(|e| AppError::Internal(e.to_string()))?;
+            if !bytes.is_empty() {
+                file_bytes = Some(bytes.to_vec());
+            }
+            break;
+        }
+    }
+
+    let bytes = match file_bytes {
+        Some(b) => b,
+        None => {
+            return render(ImportTemplate {
+                result: None,
+                parse_error: Some("No file was uploaded.".into()),
+            });
+        }
+    };
+
+    // Parse WXR.
+    let wxr = match crate::wxr::parse(&bytes) {
+        Ok(d) => d,
+        Err(e) => {
+            return render(ImportTemplate {
+                result: None,
+                parse_error: Some(format!("Failed to parse WXR: {e}")),
+            });
+        }
+    };
+
+    let mut result = ImportResult::default();
+
+    // ── Import categories ────────────────────────────────────────────────────
+    let mut cat_slug_to_id: std::collections::HashMap<String, i64> = Default::default();
+    for wcat in &wxr.categories {
+        if wcat.slug.is_empty() && wcat.name.is_empty() {
+            continue;
+        }
+        let slug = if wcat.slug.is_empty() { slugify(&wcat.name) } else { wcat.slug.clone() };
+        match Category::find_by_slug(&pool, &slug).await {
+            Ok(Some(existing)) => {
+                cat_slug_to_id.insert(slug, existing.id);
+                result.cats_skipped += 1;
+            }
+            _ => {
+                match Category::create(&pool, &wcat.name, &slug).await {
+                    Ok(cat) => {
+                        cat_slug_to_id.insert(slug, cat.id);
+                        result.cats_imported += 1;
+                    }
+                    Err(e) => result.errors.push(format!("Category '{}': {e}", wcat.name)),
+                }
+            }
+        }
+    }
+
+    // ── Import tags ──────────────────────────────────────────────────────────
+    let mut tag_slug_to_id: std::collections::HashMap<String, i64> = Default::default();
+    for wtag in &wxr.tags {
+        if wtag.name.is_empty() { continue; }
+        let slug = if wtag.slug.is_empty() { slugify(&wtag.name) } else { wtag.slug.clone() };
+        match Tag::find_by_slug(&pool, &slug).await {
+            Ok(Some(existing)) => {
+                tag_slug_to_id.insert(slug, existing.id);
+                result.tags_skipped += 1;
+            }
+            _ => {
+                match Tag::find_or_create(&pool, &wtag.name).await {
+                    Ok(tag) => {
+                        tag_slug_to_id.insert(slug, tag.id);
+                        result.tags_imported += 1;
+                    }
+                    Err(e) => result.errors.push(format!("Tag '{}': {e}", wtag.name)),
+                }
+            }
+        }
+    }
+
+    // ── Import posts ─────────────────────────────────────────────────────────
+    for wpost in &wxr.posts {
+        // Skip revisions, attachments, nav menu items, etc.
+        if matches!(wpost.post_type.as_str(), "revision" | "attachment" | "nav_menu_item" | "custom_css" | "customize_changeset") {
+            continue;
+        }
+        if wpost.title.is_empty() && wpost.slug.is_empty() { continue; }
+
+        let slug = unique_post_slug(&pool, &if wpost.slug.is_empty() {
+            slugify(&wpost.title)
+        } else {
+            wpost.slug.clone()
+        }).await;
+
+        let published = wpost.status == "publish";
+        let scheduled_at = if !published && !wpost.post_date.is_empty() && wpost.post_date != "0000-00-00 00:00:00" {
+            chrono::NaiveDateTime::parse_from_str(&wpost.post_date, "%Y-%m-%d %H:%M:%S")
+                .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
+                .ok()
+        } else {
+            None
+        };
+
+        let category_id = wpost.cat_slugs.first()
+            .and_then(|s| cat_slug_to_id.get(s).copied());
+
+        let payload = crate::models::post::CreatePost {
+            title: wpost.title.clone(),
+            slug: slug.clone(),
+            content: wpost.content.clone(),
+            excerpt: if wpost.excerpt.is_empty() { None } else { Some(wpost.excerpt.clone()) },
+            published,
+            sticky: wpost.is_sticky,
+            author_id: None,
+            category_id,
+            featured_image_id: None,
+            scheduled_at,
+            seo_title: String::new(),
+            seo_description: String::new(),
+        };
+
+        match Post::create(&pool, payload).await {
+            Ok(post) => {
+                // Link tags
+                let mut tag_ids: Vec<i64> = Vec::new();
+                for tslug in &wpost.tag_slugs {
+                    if let Some(&tid) = tag_slug_to_id.get(tslug.as_str()) {
+                        tag_ids.push(tid);
+                    } else if let Ok(tag) = Tag::find_or_create(&pool, tslug).await {
+                        tag_ids.push(tag.id);
+                    }
+                }
+                Post::set_tags(&pool, post.id, &tag_ids).await.ok();
+
+                // Post meta
+                let pairs: Vec<(String, String)> = wpost.meta.clone();
+                PostMeta::replace_all(&pool, post.id, &pairs).await.ok();
+
+                result.posts_imported += 1;
+            }
+            Err(e) => {
+                result.errors.push(format!("Post '{}': {e}", wpost.title));
+                result.posts_skipped += 1;
+            }
+        }
+    }
+
+    // ── Import pages ─────────────────────────────────────────────────────────
+    for wpage in &wxr.pages {
+        if wpage.title.is_empty() && wpage.slug.is_empty() { continue; }
+
+        let raw_slug = if wpage.slug.is_empty() { slugify(&wpage.title) } else { wpage.slug.clone() };
+        let slug = unique_page_slug(&pool, &raw_slug).await;
+        let status = if wpage.status == "publish" { "published" } else { "draft" }.to_string();
+
+        let payload = crate::models::page::CreatePage {
+            title: wpage.title.clone(),
+            slug,
+            content: wpage.content.clone(),
+            status,
+            parent_id: None,
+        };
+
+        match crate::models::Page::create(&pool, payload).await {
+            Ok(_) => result.pages_imported += 1,
+            Err(e) => {
+                result.errors.push(format!("Page '{}': {e}", wpage.title));
+                result.pages_skipped += 1;
+            }
+        }
+    }
+
+    cache.invalidate_all();
+
+    render(ImportTemplate { result: Some(result), parse_error: None })
+}
+
+// ── Slug uniqueness helpers ───────────────────────────────────────────────────
+
+async fn unique_post_slug(pool: &DbPool, base: &str) -> String {
+    let mut candidate = base.to_string();
+    let mut n = 1u32;
+    while Post::find_by_slug(pool, &candidate).await.ok().flatten().is_some() {
+        candidate = format!("{base}-{n}");
+        n += 1;
+    }
+    candidate
+}
+
+async fn unique_page_slug(pool: &DbPool, base: &str) -> String {
+    let mut candidate = base.to_string();
+    let mut n = 1u32;
+    while crate::models::Page::find_by_slug(pool, &candidate).await.ok().flatten().is_some() {
+        candidate = format!("{base}-{n}");
+        n += 1;
+    }
+    candidate
 }

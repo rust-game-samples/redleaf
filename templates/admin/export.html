@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Export & Backup{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1>Export &amp; Backup</h1></div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem;">
+
+  <!-- JSON Export -->
+  <div class="card" style="margin-bottom:0;">
+    <h2 style="margin-top:0;font-size:1rem;color:#374151;">Export as JSON</h2>
+    <p style="color:#6b7280;font-size:.9rem;margin-top:.3rem;">
+      Exports all posts, pages, categories, tags, media and settings as a
+      single JSON file. Use this to migrate content between RedLeaf instances.
+    </p>
+    <a href="/admin/export/json" class="btn btn-primary">Download JSON</a>
+  </div>
+
+  <!-- WXR Export -->
+  <div class="card" style="margin-bottom:0;">
+    <h2 style="margin-top:0;font-size:1rem;color:#374151;">Export as WordPress WXR</h2>
+    <p style="color:#6b7280;font-size:.9rem;margin-top:.3rem;">
+      Generates a WordPress eXtended RSS (WXR 1.2) XML file compatible with
+      WordPress's built-in importer. Includes posts, pages, categories and tags.
+    </p>
+    <a href="/admin/export/wxr" class="btn btn-primary">Download WXR</a>
+  </div>
+
+  <!-- DB Backup -->
+  <div class="card" style="margin-bottom:0;">
+    <h2 style="margin-top:0;font-size:1rem;color:#374151;">SQLite Database Backup</h2>
+    <p style="color:#6b7280;font-size:.9rem;margin-top:.3rem;">
+      Downloads a copy of the raw SQLite database file. Keep this somewhere safe —
+      it can be used to fully restore the site.
+    </p>
+    <a href="/admin/export/db" class="btn btn-primary">Download DB</a>
+  </div>
+
+</div>
+{% endblock %}

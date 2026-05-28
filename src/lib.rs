@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod cache;
 pub mod image_processing;
+pub mod wxr;
 pub mod auth;
 pub mod db;
 pub mod errors;
