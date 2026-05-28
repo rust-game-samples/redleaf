@@ -19,12 +19,15 @@ where
     }
 }
 
+use std::sync::Arc;
 use crate::{
     auth::{generate_token, Claims},
+    cache::PageCache,
     db::DbPool,
     errors::AppError,
     filters,
     hooks,
+    image_processing,
     middleware::has_capability,
     models::{
         ActivityLog, ActivityLogWithUser,
@@ -176,10 +179,15 @@ struct RevisionListTemplate {
 
 // ─── Media templates ──────────────────────────────────────────────────────────
 
+struct MediaListItem {
+    media: Media,
+    variant_count: i64,
+}
+
 #[derive(Template)]
 #[template(path = "admin/media/list.html")]
 struct MediaListTemplate {
-    media: Vec<Media>,
+    media: Vec<MediaListItem>,
     error: Option<String>,
 }
 
@@ -669,6 +677,7 @@ async fn new_post_form(State(pool): State<DbPool>) -> Result<Response, AppError>
 async fn create_post(
     State(pool): State<DbPool>,
     Extension(claims): Extension<Claims>,
+    Extension(cache): Extension<Arc<PageCache>>,
     Form(form): Form<PostForm>,
 ) -> Result<Response, AppError> {
     let meta_pairs = meta_pairs_from_form(&form);
@@ -687,6 +696,7 @@ async fn create_post(
             Post::set_tags(&pool, post.id, &tag_ids).await?;
             PostMeta::replace_all(&pool, post.id, &meta_pairs).await?;
             ActivityLog::create(&pool, Some(claims.sub), "post.created", Some("post"), Some(post.id)).await.ok();
+            cache.invalidate_all();
             Ok(Redirect::to("/admin/posts").into_response())
         }
         Err(e) => {
@@ -736,6 +746,7 @@ async fn edit_post_form(
 async fn update_post(
     State(pool): State<DbPool>,
     Extension(claims): Extension<Claims>,
+    Extension(cache): Extension<Arc<PageCache>>,
     Path(id): Path<i64>,
     Form(form): Form<PostForm>,
 ) -> Result<Response, AppError> {
@@ -783,22 +794,26 @@ async fn update_post(
     Post::set_tags(&pool, post.id, &tag_ids).await?;
     PostMeta::replace_all(&pool, post.id, &meta_pairs_from_form(&form)).await?;
     ActivityLog::create(&pool, Some(claims.sub), "post.updated", Some("post"), Some(id)).await.ok();
+    cache.invalidate_all();
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
 async fn delete_post(
     State(pool): State<DbPool>,
     Extension(claims): Extension<Claims>,
+    Extension(cache): Extension<Arc<PageCache>>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     Post::delete(&pool, id).await?;
     ActivityLog::create(&pool, Some(claims.sub), "post.deleted", Some("post"), Some(id)).await.ok();
+    cache.invalidate_all();
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
 async fn bulk_posts(
     State(pool): State<DbPool>,
     Extension(claims): Extension<Claims>,
+    Extension(cache): Extension<Arc<PageCache>>,
     Form(form): Form<BulkPostForm>,
 ) -> Result<Response, AppError> {
     let published = match form.action.as_str() {
@@ -826,6 +841,7 @@ async fn bulk_posts(
             _           => "post.bulk_delete",
         };
         ActivityLog::create(&pool, Some(claims.sub), action, Some("post"), None).await.ok();
+        cache.invalidate_all();
     }
     Ok(Redirect::to("/admin/posts").into_response())
 }
@@ -833,6 +849,7 @@ async fn bulk_posts(
 async fn toggle_published(
     State(pool): State<DbPool>,
     Extension(claims): Extension<Claims>,
+    Extension(cache): Extension<Arc<PageCache>>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     let post = Post::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
@@ -853,6 +870,7 @@ async fn toggle_published(
     Post::update(&pool, id, payload).await?;
     let action = if next_published { "post.published" } else { "post.unpublished" };
     ActivityLog::create(&pool, Some(claims.sub), action, Some("post"), Some(id)).await.ok();
+    cache.invalidate_all();
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
@@ -1078,8 +1096,18 @@ fn generate_filename(original: &str) -> String {
     format!("{ts}_{rand:016x}.{ext}")
 }
 
+async fn build_media_list(pool: &DbPool) -> Vec<MediaListItem> {
+    let raw = Media::find_all(pool).await.unwrap_or_default();
+    let mut items = Vec::with_capacity(raw.len());
+    for m in raw {
+        let variant_count = Media::count_variants(pool, m.id).await.unwrap_or(0);
+        items.push(MediaListItem { media: m, variant_count });
+    }
+    items
+}
+
 async fn list_media(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let media = Media::find_all(&pool).await?;
+    let media = build_media_list(&pool).await;
     render(MediaListTemplate { media, error: None })
 }
 
@@ -1118,7 +1146,7 @@ async fn upload_media(
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         if bytes.is_empty() {
-            let media = Media::find_all(&pool).await?;
+            let media = build_media_list(&pool).await;
             return render(MediaListTemplate {
                 media,
                 error: Some("No file was provided.".into()),
@@ -1133,7 +1161,7 @@ async fn upload_media(
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let url = format!("/static/uploads/{filename}");
-        Media::create(
+        let record = Media::create(
             &pool,
             &filename,
             &original_name,
@@ -1144,12 +1172,42 @@ async fn upload_media(
         )
         .await?;
 
+        // Generate image variants if this is an image
+        if record.is_image() {
+            let stem = filename.rsplit('.').skip(1).collect::<Vec<_>>().join(".");
+            let bytes_clone = bytes.to_vec();
+            let mime_clone = mime_type.clone();
+            let variants = tokio::task::spawn_blocking(move || {
+                image_processing::generate_variants(&bytes_clone, &mime_clone, &stem)
+            })
+            .await
+            .unwrap_or_default();
+
+            for v in &variants {
+                let variant_path = format!("{UPLOAD_DIR}/{}", v.filename);
+                if tokio::fs::write(&variant_path, &v.bytes).await.is_ok() {
+                    Media::create_variant(
+                        &pool,
+                        record.id,
+                        &v.size_name,
+                        &v.filename,
+                        &v.url,
+                        v.width,
+                        v.height,
+                        v.bytes.len(),
+                    )
+                    .await
+                    .ok();
+                }
+            }
+        }
+
         uploaded = true;
         break;
     }
 
     if !uploaded {
-        let media = Media::find_all(&pool).await?;
+        let media = build_media_list(&pool).await;
         return render(MediaListTemplate {
             media,
             error: Some("No file was provided.".into()),
@@ -1163,6 +1221,12 @@ async fn delete_media_handler(
     State(pool): State<DbPool>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
+    // Delete variant files before removing the DB record (which cascades)
+    let variants = Media::find_variants(&pool, id).await.unwrap_or_default();
+    for v in &variants {
+        let vpath = format!("{UPLOAD_DIR}/{}", v.filename);
+        tokio::fs::remove_file(&vpath).await.ok();
+    }
     if let Some(media) = Media::delete(&pool, id).await? {
         let path = format!("{UPLOAD_DIR}/{}", media.filename);
         tokio::fs::remove_file(&path).await.ok();

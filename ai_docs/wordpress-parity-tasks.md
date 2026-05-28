@@ -254,16 +254,16 @@ WordPress に近づけるための機能追加タスク。
 
 ### 画像処理
 
-- [ ] アップロード時の画像リサイズ（thumbnail / medium / large サイズ自動生成）
-- [ ] `image` crate を使ったサーバーサイド画像処理
-- [ ] WebP 変換対応
-- [ ] `<img srcset>` の自動生成
+- [x] アップロード時の画像リサイズ（thumbnail / medium / large サイズ自動生成）
+- [x] `image` crate を使ったサーバーサイド画像処理
+- [x] WebP 変換対応
+- [x] `<img srcset>` の自動生成
 
 ### キャッシュ
 
-- [ ] ページキャッシュレイヤー（`tower` ミドルウェア）
-- [ ] 投稿更新時のキャッシュ自動パージ
-- [ ] ETag / Last-Modified ヘッダー対応
+- [x] ページキャッシュレイヤー（`tower` ミドルウェア）
+- [x] 投稿更新時のキャッシュ自動パージ
+- [x] ETag / Last-Modified ヘッダー対応
 
 ---
 

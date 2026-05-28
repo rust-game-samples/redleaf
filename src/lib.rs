@@ -1,4 +1,6 @@
 pub mod assets;
+pub mod cache;
+pub mod image_processing;
 pub mod auth;
 pub mod db;
 pub mod errors;
@@ -10,15 +12,21 @@ pub mod routes;
 pub mod shortcodes;
 pub mod util;
 
-use axum::{middleware as axum_middleware, routing::get, Router};
+use std::sync::Arc;
+use axum::{middleware as axum_middleware, routing::get, Extension, Router};
 use tower_http::{services::ServeDir, trace::TraceLayer};
 
 pub fn build_app(pool: db::DbPool) -> Router {
+    let page_cache = cache::PageCache::new();
+
     let protected_admin = routes::admin_routes()
         .layer(axum_middleware::from_fn(middleware::require_auth));
 
     let protected_api = routes::api::api_protected_routes()
         .layer(axum_middleware::from_fn(middleware::require_auth));
+
+    // Capture cache for the middleware closure.
+    let cache_for_mw = Arc::clone(&page_cache);
 
     Router::new()
         .route("/", get(routes::index))
@@ -40,6 +48,13 @@ pub fn build_app(pool: db::DbPool) -> Router {
         .nest("/api", routes::api::api_public_routes().merge(protected_api))
         .nest_service("/static", ServeDir::new("static"))
         .fallback(routes::not_found_handler)
+        // Page cache middleware wraps all routes (outermost layer = first to run).
+        .layer(axum_middleware::from_fn(move |req, next| {
+            let c = Arc::clone(&cache_for_mw);
+            async move { cache::middleware(c, req, next).await }
+        }))
+        // Extension makes the cache available to admin handlers for purging.
+        .layer(Extension(page_cache))
         .layer(TraceLayer::new_for_http())
         .with_state(pool)
 }

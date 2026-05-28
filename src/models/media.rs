@@ -5,6 +5,24 @@ use sqlx::FromRow;
 use crate::db::DbPool;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MediaVariant {
+    pub id: i64,
+    pub media_id: i64,
+    pub size_name: String,
+    pub filename: String,
+    pub url: String,
+    pub width: i64,
+    pub height: i64,
+    pub file_size: i64,
+}
+
+impl MediaVariant {
+    pub fn is_webp(&self) -> bool {
+        self.size_name.ends_with("-webp")
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Media {
     pub id: i64,
     pub filename: String,
@@ -59,6 +77,48 @@ impl Media {
         sqlx::query_as::<_, Media>("DELETE FROM media WHERE id = ? RETURNING *")
             .bind(id)
             .fetch_optional(pool)
+            .await
+    }
+
+    pub async fn create_variant(
+        pool: &DbPool,
+        media_id: i64,
+        size_name: &str,
+        filename: &str,
+        url: &str,
+        width: u32,
+        height: u32,
+        file_size: usize,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO media_variants (media_id, size_name, filename, url, width, height, file_size)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(media_id)
+        .bind(size_name)
+        .bind(filename)
+        .bind(url)
+        .bind(width as i64)
+        .bind(height as i64)
+        .bind(file_size as i64)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn find_variants(pool: &DbPool, media_id: i64) -> Result<Vec<MediaVariant>, sqlx::Error> {
+        sqlx::query_as::<_, MediaVariant>(
+            "SELECT * FROM media_variants WHERE media_id = ? ORDER BY width ASC",
+        )
+        .bind(media_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn count_variants(pool: &DbPool, media_id: i64) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar("SELECT COUNT(*) FROM media_variants WHERE media_id = ?")
+            .bind(media_id)
+            .fetch_one(pool)
             .await
     }
 

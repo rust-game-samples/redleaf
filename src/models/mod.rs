@@ -15,7 +15,7 @@ pub mod widget;
 pub use activity_log::{ActivityLog, ActivityLogWithUser};
 pub use category::{Category, CategoryWithCount};
 pub use comment::{Comment, CommentWithPost};
-pub use media::Media;
+pub use media::{Media, MediaVariant};
 pub use nav_menu::{NavMenu, NavMenuItem, LOCATIONS};
 pub use page::{Page, CreatePage, UpdatePage};
 pub use post::{Post, PostWithAuthor};

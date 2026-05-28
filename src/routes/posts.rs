@@ -13,7 +13,7 @@ use crate::{
     db::DbPool,
     errors::AppError,
     filters,
-    models::{Comment, NavMenu, Post, PostWithAuthor, Setting, Tag, Widget},
+    models::{Comment, Media, MediaVariant, NavMenu, Post, PostWithAuthor, Setting, Tag, Widget},
     util::{render, Pagination, PER_PAGE},
 };
 
@@ -76,6 +76,7 @@ struct PostShowTemplate {
     post_url_type: String,
     widget_areas: HashMap<String, String>,
     nav_menus: HashMap<String, String>,
+    featured_image_variants: Vec<MediaVariant>,
 }
 
 impl PostShowTemplate {
@@ -128,23 +129,51 @@ impl PostShowTemplate {
             .unwrap_or("")
     }
 
-    /// `the_post_thumbnail` — renders an `<img>` tag for the featured image.
-    /// `size` is one of: "thumbnail" (150px), "medium" (300px), "large" (1024px), or "full".
-    fn the_post_thumbnail(&self, size: &str) -> String {
+    /// `the_post_thumbnail` — renders an `<img>` (or `<picture>`) tag for the featured image.
+    /// Includes `srcset` when image variants are available.
+    fn the_post_thumbnail(&self, _size: &str) -> String {
         let url = match &self.post.featured_image_url {
             Some(u) => u,
             None => return String::new(),
         };
-        let max_w = match size {
-            "thumbnail" => "150px",
-            "medium" => "300px",
-            "large" => "1024px",
-            _ => "100%",
-        };
         let alt = escape_html(&self.post.title);
-        format!(
-            r#"<img src="{url}" alt="{alt}" style="max-width:{max_w};object-fit:cover;" loading="lazy">"#
-        )
+
+        let native: Vec<&MediaVariant> = self.featured_image_variants
+            .iter()
+            .filter(|v| !v.is_webp())
+            .collect();
+        let webp: Vec<&MediaVariant> = self.featured_image_variants
+            .iter()
+            .filter(|v| v.is_webp())
+            .collect();
+
+        if native.is_empty() {
+            return format!(
+                r#"<img src="{url}" alt="{alt}" style="max-width:100%;height:auto;" loading="lazy">"#
+            );
+        }
+
+        let srcset = native
+            .iter()
+            .map(|v| format!("{} {}w", v.url, v.width))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sizes = r#"(max-width:600px) 300px, 1024px"#;
+
+        if webp.is_empty() {
+            format!(
+                r#"<img src="{url}" srcset="{srcset}" sizes="{sizes}" alt="{alt}" style="max-width:100%;height:auto;" loading="lazy">"#
+            )
+        } else {
+            let webp_srcset = webp
+                .iter()
+                .map(|v| format!("{} {}w", v.url, v.width))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                r#"<picture><source type="image/webp" srcset="{webp_srcset}" sizes="{sizes}"><img src="{url}" srcset="{srcset}" sizes="{sizes}" alt="{alt}" style="max-width:100%;height:auto;" loading="lazy"></picture>"#
+            )
+        }
     }
 
     fn home_url(&self) -> &str {
@@ -293,6 +322,11 @@ async fn show_post(
         Comment::find_by_post(&pool, post.id),
         Comment::count_by_post(&pool, post.id),
     );
+    let featured_image_variants = if let Some(fid) = post.featured_image_id {
+        Media::find_variants(&pool, fid).await.unwrap_or_default()
+    } else {
+        vec![]
+    };
     let html_content = markdown_to_html(&post.content);
     let comment_notice = match q.comment.as_deref() {
         Some("pending") => Some("Your comment has been submitted and is awaiting moderation.".into()),
@@ -310,6 +344,7 @@ async fn show_post(
         post_url_type: url_type,
         widget_areas,
         nav_menus,
+        featured_image_variants,
     })
 }
 

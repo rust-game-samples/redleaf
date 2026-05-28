@@ -28,29 +28,32 @@
 </div>
 {% else %}
 <div class="media-grid">
-  {% for m in media %}
+  {% for item in media %}
   <div class="media-item">
     <div class="media-preview">
-      {% if m.is_image() %}
-      <img src="{{ m.url }}" alt="{{ m.original_name }}" loading="lazy">
+      {% if item.media.is_image() %}
+      <img src="{{ item.media.url }}" alt="{{ item.media.original_name }}" loading="lazy">
       {% else %}
       <div class="media-icon">
-        {% if m.mime_type == "application/pdf" %}📄
-        {% else if m.mime_type.starts_with("video/") %}🎬
-        {% else if m.mime_type.starts_with("audio/") %}🎵
+        {% if item.media.mime_type == "application/pdf" %}📄
+        {% else if item.media.mime_type.starts_with("video/") %}🎬
+        {% else if item.media.mime_type.starts_with("audio/") %}🎵
         {% else %}📁
         {% endif %}
       </div>
       {% endif %}
     </div>
     <div class="media-info">
-      <div class="media-name" title="{{ m.original_name }}">{{ m.original_name }}</div>
-      <div class="media-meta">{{ m.mime_type }}</div>
-      <div class="media-meta">{{ m.human_size() }} · {{ m.created_at.format("%Y-%m-%d") }}</div>
+      <div class="media-name" title="{{ item.media.original_name }}">{{ item.media.original_name }}</div>
+      <div class="media-meta">{{ item.media.mime_type }}</div>
+      <div class="media-meta">{{ item.media.human_size() }} · {{ item.media.created_at.format("%Y-%m-%d") }}</div>
+      {% if item.variant_count > 0 %}
+      <div class="media-meta" style="color:#2d5f3e;">{{ item.variant_count }} size variant{% if item.variant_count != 1 %}s{% endif %}</div>
+      {% endif %}
       <div class="media-actions">
-        <button onclick="copyUrl('{{ m.url }}')" class="btn btn-secondary" type="button">Copy URL</button>
-        <form method="post" action="/admin/media/{{ m.id }}/delete" style="margin:0"
-              onsubmit="return confirm('Delete \'{{ m.original_name }}\'? This cannot be undone.')">
+        <button onclick="copyUrl('{{ item.media.url }}')" class="btn btn-secondary" type="button">Copy URL</button>
+        <form method="post" action="/admin/media/{{ item.media.id }}/delete" style="margin:0"
+              onsubmit="return confirm('Delete \'{{ item.media.original_name }}\'? This cannot be undone.')">
           <button type="submit" class="btn btn-danger">Delete</button>
         </form>
       </div>

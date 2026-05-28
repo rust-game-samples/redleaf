@@ -38,6 +38,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Markdown
 pulldown-cmark = "0.13.0"
 
+# Image processing
+image = { version = "0.25", features = ["webp"] }
+
+# Cache / body utilities
+bytes = "1"
+
 # Error handling
 anyhow = "1"
 thiserror = "2.0.17"
