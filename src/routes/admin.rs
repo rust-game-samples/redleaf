@@ -109,6 +109,7 @@ struct SettingsTemplate {
     site_description: String,
     logo_url: String,
     active_theme: String,
+    robots_txt: String,
     saved: Option<String>,
 }
 
@@ -218,6 +219,8 @@ struct PostFormTemplate {
     featured_image_id: Option<i64>,
     featured_image_url: Option<String>,
     meta_fields: Vec<(String, String)>,
+    seo_title: String,
+    seo_description: String,
 }
 
 impl PostFormTemplate {
@@ -241,6 +244,8 @@ impl PostFormTemplate {
             featured_image_id: None,
             featured_image_url: None,
             meta_fields: vec![],
+            seo_title: String::new(),
+            seo_description: String::new(),
         }
     }
 
@@ -266,6 +271,8 @@ impl PostFormTemplate {
             featured_image_id: post.featured_image_id,
             featured_image_url: None,
             meta_fields: vec![],
+            seo_title: post.seo_title.clone(),
+            seo_description: post.seo_description.clone(),
         }
     }
 }
@@ -295,6 +302,10 @@ struct PostForm {
     meta_keys: Vec<String>,
     #[serde(rename = "meta_value[]", default)]
     meta_values: Vec<String>,
+    #[serde(default)]
+    seo_title: String,
+    #[serde(default)]
+    seo_description: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -329,6 +340,7 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/tags", get(list_tags))
         .route("/tags/{id}/delete", post(delete_tag))
         .route("/settings", get(settings_page).post(settings_save))
+        .route("/settings/robots", post(save_robots_txt))
         .route("/media", get(list_media))
         .route("/media/upload", post(upload_media))
         .route("/media/{id}/delete", post(delete_media_handler))
@@ -492,6 +504,8 @@ fn form_to_create(form: &PostForm) -> CreatePost {
         category_id: form.category_id,
         featured_image_id: form.featured_image_id,
         scheduled_at,
+        seo_title: form.seo_title.trim().to_string(),
+        seo_description: form.seo_description.trim().to_string(),
     }
 }
 
@@ -635,6 +649,8 @@ async fn update_post(
         category_id: Some(form.category_id),
         featured_image_id: Some(form.featured_image_id),
         scheduled_at: Some(scheduled_at),
+        seo_title: Some(form.seo_title.trim().to_string()),
+        seo_description: Some(form.seo_description.trim().to_string()),
     };
 
     let post = Post::update(&pool, id, payload).await.map_err(|e| match e {
@@ -670,6 +686,8 @@ async fn toggle_published(
         category_id: None,
         featured_image_id: None,
         scheduled_at: None,
+        seo_title: None,
+        seo_description: None,
     };
     Post::update(&pool, id, payload).await?;
     Ok(Redirect::to("/admin/posts").into_response())
@@ -798,14 +816,19 @@ struct SettingsForm {
 }
 
 async fn settings_page(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let (post_url_type, site_name, site_description, logo_url, active_theme) = tokio::join!(
+    let (post_url_type, site_name, site_description, logo_url, active_theme, robots_txt) = tokio::join!(
         Setting::post_url_type(&pool),
         Setting::site_name(&pool),
         Setting::site_description(&pool),
         Setting::logo_url(&pool),
         Setting::active_theme(&pool),
+        Setting::get(&pool, "robots_txt"),
     );
-    render(SettingsTemplate { post_url_type, site_name, site_description, logo_url, active_theme, saved: None })
+    render(SettingsTemplate {
+        post_url_type, site_name, site_description, logo_url, active_theme,
+        robots_txt: robots_txt.unwrap_or_default(),
+        saved: None,
+    })
 }
 
 async fn settings_save(
@@ -831,14 +854,30 @@ async fn settings_save(
         Setting::set(&pool, "active_theme", &active_theme),
     )?;
 
+    let robots_txt = Setting::get(&pool, "robots_txt").await.unwrap_or_default();
     render(SettingsTemplate {
         post_url_type: url_type.to_string(),
         site_name,
         site_description,
         logo_url,
         active_theme,
+        robots_txt,
         saved: Some("Settings saved.".to_string()),
     })
+}
+
+#[derive(Deserialize)]
+struct RobotsTxtForm {
+    robots_txt: Option<String>,
+}
+
+async fn save_robots_txt(
+    State(pool): State<DbPool>,
+    Form(form): Form<RobotsTxtForm>,
+) -> Result<Response, AppError> {
+    let value = form.robots_txt.as_deref().unwrap_or("").trim();
+    Setting::set(&pool, "robots_txt", value).await?;
+    Ok(Redirect::to("/admin/settings").into_response())
 }
 
 // ─── Media handlers ───────────────────────────────────────────────────────────
@@ -1114,6 +1153,8 @@ async fn restore_revision(
         category_id: None,
         featured_image_id: None,
         scheduled_at: None,
+        seo_title: None,
+        seo_description: None,
     };
     Post::update(&pool, post_id, payload).await.map_err(|e| match e {
         sqlx::Error::RowNotFound => AppError::NotFound,

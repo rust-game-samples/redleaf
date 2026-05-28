@@ -147,6 +147,24 @@
       {% endfor %}
     </div>
 
+    <!-- SEO fields -->
+    <details style="margin-top:1.25rem;">
+      <summary style="cursor:pointer;font-weight:600;color:#374151;padding:.4rem 0;">SEO Settings</summary>
+      <div style="margin-top:.75rem;padding:1rem;background:#f9fafb;border-radius:6px;border:1px solid #e5e7eb;">
+        <div class="form-group">
+          <label for="seo_title">SEO Title <span style="color:#9ca3af;font-weight:400;font-size:.82rem;">(leave empty to use post title)</span></label>
+          <input type="text" id="seo_title" name="seo_title" value="{{ seo_title }}"
+                 placeholder="Custom title for search engines">
+        </div>
+        <div class="form-group" style="margin-bottom:0;">
+          <label for="seo_description">Meta Description <span style="color:#9ca3af;font-weight:400;font-size:.82rem;">(recommended: 120–160 chars)</span></label>
+          <textarea id="seo_description" name="seo_description" rows="3"
+                    style="width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-family:inherit;font-size:.9rem;resize:vertical;box-sizing:border-box;"
+                    placeholder="Brief description for search engine results">{{ seo_description }}</textarea>
+        </div>
+      </div>
+    </details>
+
     <div style="margin-top:1.5rem;">
       <button type="submit" class="btn btn-primary">Save Post</button>
     </div>

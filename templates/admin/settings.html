@@ -92,4 +92,17 @@
 
   <button type="submit" class="btn btn-primary">Save settings</button>
 </form>
+
+<form method="post" action="/admin/settings/robots" style="margin-top:1.5rem;">
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1rem;color:#374151;font-weight:600;">robots.txt</h2>
+    <p style="color:#6b7280;font-size:.9rem;margin-top:0;">
+      Customize the <code>/robots.txt</code> file. Leave empty for the default (allow all + Sitemap).
+    </p>
+    <div class="form-group" style="margin-bottom:.75rem;">
+      <textarea name="robots_txt" rows="8" style="width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-family:ui-monospace,monospace;font-size:.88rem;resize:vertical;box-sizing:border-box;">{{ robots_txt }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-secondary">Save robots.txt</button>
+  </div>
+</form>
 {% endblock %}

@@ -1,0 +1,2 @@
+ALTER TABLE posts ADD COLUMN seo_title       TEXT NOT NULL DEFAULT '';
+ALTER TABLE posts ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';

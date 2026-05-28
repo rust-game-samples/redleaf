@@ -17,6 +17,8 @@ pub struct Post {
     pub category_id: Option<i64>,
     pub featured_image_id: Option<i64>,
     pub scheduled_at: Option<DateTime<Utc>>,
+    pub seo_title: String,
+    pub seo_description: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -41,6 +43,8 @@ pub struct PostWithAuthor {
     pub category_id: Option<i64>,
     pub featured_image_id: Option<i64>,
     pub scheduled_at: Option<DateTime<Utc>>,
+    pub seo_title: String,
+    pub seo_description: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub author_username: Option<String>,
@@ -62,6 +66,10 @@ pub struct CreatePost {
     pub category_id: Option<i64>,
     pub featured_image_id: Option<i64>,
     pub scheduled_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub seo_title: String,
+    #[serde(default)]
+    pub seo_description: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +85,8 @@ pub struct UpdatePost {
     pub category_id: Option<Option<i64>>,
     pub featured_image_id: Option<Option<i64>>,
     pub scheduled_at: Option<Option<DateTime<Utc>>>,
+    pub seo_title: Option<String>,
+    pub seo_description: Option<String>,
 }
 
 // ─── Base query fragment ──────────────────────────────────────────────────────
@@ -384,8 +394,9 @@ impl Post {
             r#"
             INSERT INTO posts
                 (title, slug, content, excerpt, published, sticky,
-                 author_id, category_id, featured_image_id, scheduled_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 author_id, category_id, featured_image_id, scheduled_at,
+                 seo_title, seo_description, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING *
             "#,
         )
@@ -399,6 +410,8 @@ impl Post {
         .bind(p.category_id)
         .bind(p.featured_image_id)
         .bind(p.scheduled_at)
+        .bind(&p.seo_title)
+        .bind(&p.seo_description)
         .bind(now)
         .bind(now)
         .fetch_one(pool)
@@ -420,7 +433,8 @@ impl Post {
             UPDATE posts
             SET title = ?, slug = ?, content = ?, excerpt = ?,
                 published = ?, sticky = ?, category_id = ?,
-                featured_image_id = ?, scheduled_at = ?, updated_at = ?
+                featured_image_id = ?, scheduled_at = ?,
+                seo_title = ?, seo_description = ?, updated_at = ?
             WHERE id = ?
             RETURNING *
             "#,
@@ -434,6 +448,8 @@ impl Post {
         .bind(match u.category_id { None => cur.category_id, Some(v) => v })
         .bind(match u.featured_image_id { None => cur.featured_image_id, Some(v) => v })
         .bind(match u.scheduled_at { None => cur.scheduled_at, Some(v) => v })
+        .bind(u.seo_title.unwrap_or(cur.seo_title))
+        .bind(u.seo_description.unwrap_or(cur.seo_description))
         .bind(now)
         .bind(id)
         .fetch_one(pool)

@@ -3,12 +3,29 @@
 {% block title %}{{ self.the_title() }} — {{ site_name }}{% endblock %}
 
 {% block head %}
-<meta property="og:title" content="{{ self.the_title() }}">
+<!-- Open Graph -->
+<meta property="og:title" content="{{ self.effective_seo_title() }}">
 <meta property="og:type" content="article">
-<meta property="og:description" content="{{ self.the_excerpt() }}">
-{% if let Some(img_url) = &post.featured_image_url %}<meta property="og:image" content="{{ img_url }}">{% endif %}
+<meta property="og:description" content="{{ self.effective_seo_description() }}">
+<meta property="og:url" content="{{ self.the_permalink() }}">
+{% if let Some(img_url) = &post.featured_image_url %}
+<meta property="og:image" content="{{ img_url }}">
+{% endif %}
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ self.effective_seo_title() }}">
+<meta name="twitter:description" content="{{ self.effective_seo_description() }}">
+{% if let Some(img_url) = &post.featured_image_url %}
+<meta name="twitter:image" content="{{ img_url }}">
+{% endif %}
+<!-- SEO -->
+{% if !self.effective_seo_description().is_empty() %}
+<meta name="description" content="{{ self.effective_seo_description() }}">
+{% endif %}
 <link rel="canonical" href="{{ self.the_permalink() }}">
+<link rel="alternate" type="application/rss+xml" title="{{ site_name }} RSS Feed" href="/feed">
 {{ self.breadcrumb_json_ld()|safe }}
+{{ self.article_json_ld()|safe }}
 {% endblock %}
 
 {% block style %}

@@ -171,29 +171,29 @@ WordPress に近づけるための機能追加タスク。
 
 ### RSS / Atom フィード
 
-- [ ] `GET /feed` — RSS 2.0 フィード（最新20件）
-- [ ] `GET /feed/atom` — Atom フィード
-- [ ] カテゴリ別フィード (`/category/{slug}/feed`)
-- [ ] `<link rel="alternate">` タグをテンプレート head に自動出力
+- [x] `GET /feed` — RSS 2.0 フィード（最新20件）
+- [x] `GET /feed/atom` — Atom フィード
+- [x] カテゴリ別フィード (`/category/{slug}/feed`)
+- [x] `<link rel="alternate">` タグをテンプレート head に自動出力
 
 ### XML サイトマップ
 
-- [ ] `GET /sitemap.xml` — 全公開投稿・固定ページの URL 一覧
-- [ ] サイトマップインデックス (`/sitemap_index.xml`) で分割対応
-- [ ] `<lastmod>` / `<changefreq>` / `<priority>` 設定
+- [x] `GET /sitemap.xml` — 全公開投稿・固定ページの URL 一覧
+- [x] サイトマップインデックス (`/sitemap_index.xml`) で分割対応
+- [x] `<lastmod>` / `<changefreq>` / `<priority>` 設定
 
 ### OGP / SEO メタタグ
 
-- [ ] `posts.seo_title` / `posts.seo_description` カラム追加
-- [ ] テンプレート `<head>` に Open Graph タグ自動出力（`og:title` / `og:description` / `og:image`）
-- [ ] Twitter Card メタタグ出力
-- [ ] Canonical URL `<link rel="canonical">` 出力
-- [ ] 構造化データ JSON-LD（`Article` スキーマ）の自動出力
+- [x] `posts.seo_title` / `posts.seo_description` カラム追加
+- [x] テンプレート `<head>` に Open Graph タグ自動出力（`og:title` / `og:description` / `og:image`）
+- [x] Twitter Card メタタグ出力
+- [x] Canonical URL `<link rel="canonical">` 出力
+- [x] 構造化データ JSON-LD（`Article` スキーマ）の自動出力
 
 ### robots.txt
 
-- [ ] `GET /robots.txt` — 動的生成（サイトマップ URL 含む）
-- [ ] 管理画面: robots.txt 内容の編集 UI
+- [x] `GET /robots.txt` — 動的生成（サイトマップ URL 含む）
+- [x] 管理画面: robots.txt 内容の編集 UI
 
 ---
 

@@ -137,6 +137,8 @@ async fn create_post(
         category_id: None,
         featured_image_id: None,
         scheduled_at: None,
+        seo_title: String::new(),
+        seo_description: String::new(),
     };
 
     let post = Post::create(&pool, payload).await.map_err(|e| {
@@ -163,6 +165,8 @@ async fn update_post(
         category_id: None,
         featured_image_id: None,
         scheduled_at: None,
+        seo_title: None,
+        seo_description: None,
     };
 
     let post = Post::update(&pool, id, payload).await.map_err(|e| match e {

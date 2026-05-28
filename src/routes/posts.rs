@@ -190,6 +190,41 @@ impl PostShowTemplate {
     fn render_comments(&self) -> String {
         Comment::render_thread(&self.comments, None)
     }
+
+    fn effective_seo_title(&self) -> &str {
+        if !self.post.seo_title.is_empty() { &self.post.seo_title } else { &self.post.title }
+    }
+
+    fn effective_seo_description(&self) -> String {
+        if !self.post.seo_description.is_empty() {
+            self.post.seo_description.clone()
+        } else {
+            self.the_excerpt()
+        }
+    }
+
+    fn article_json_ld(&self) -> String {
+        let title = self.post.title.replace('"', "\\\"");
+        let desc = self.effective_seo_description().replace('"', "\\\"");
+        let url = self.the_permalink();
+        let date_pub = self.post.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let date_mod = self.post.updated_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let author = self.the_author();
+        let img = self.post.featured_image_url.as_deref().unwrap_or("");
+        format!(
+            r#"<script type="application/ld+json">{{
+"@context":"https://schema.org",
+"@type":"Article",
+"headline":"{title}",
+"description":"{desc}",
+"url":"{url}",
+"datePublished":"{date_pub}",
+"dateModified":"{date_mod}",
+"author":{{"@type":"Person","name":"{author}"}},
+"image":"{img}"
+}}</script>"#
+        )
+    }
 }
 
 fn escape_html(s: &str) -> String {

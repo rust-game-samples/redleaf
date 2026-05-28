@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
     extract::{Form, Path, Query, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
@@ -20,12 +20,14 @@ use crate::{
 pub mod admin;
 pub mod api;
 pub mod auth;
+pub mod feed;
 pub mod posts;
 pub mod taxonomy;
 
 pub use admin::admin_login_routes;
 pub use admin::admin_routes;
 pub use auth::auth_routes;
+pub use feed::{feed_routes, category_feed_route};
 pub use posts::post_routes;
 pub use taxonomy::taxonomy_routes;
 
@@ -330,4 +332,113 @@ pub async fn not_found_handler(State(pool): State<DbPool>) -> impl IntoResponse 
         Ok(html) => (StatusCode::NOT_FOUND, Html(html)).into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
     }
+}
+
+// ─── Sitemap ──────────────────────────────────────────────────────────────────
+
+fn host_from_headers(headers: &HeaderMap) -> String {
+    headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost")
+        .to_string()
+}
+
+fn base_from_host(host: &str) -> String {
+    let scheme = if host.starts_with("localhost") || host.starts_with("127.") { "http" } else { "https" };
+    format!("{}://{}", scheme, host)
+}
+
+pub async fn sitemap_xml(
+    State(pool): State<DbPool>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let host = host_from_headers(&headers);
+    let base = base_from_host(&host);
+
+    let (posts, pages) = tokio::join!(
+        Post::find_all_admin(&pool),
+        Page::find_all(&pool),
+    );
+
+    let mut urls = String::new();
+    if let Ok(posts) = posts {
+        for p in posts.iter().filter(|p| p.published) {
+            let loc = format!("{}/posts/{}", base, xml_escape(&p.slug));
+            let lastmod = p.updated_at.format("%Y-%m-%d").to_string();
+            urls.push_str(&format!(
+                "<url><loc>{loc}</loc><lastmod>{lastmod}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>\n"
+            ));
+        }
+    }
+    if let Ok(pages) = pages {
+        for p in pages.iter().filter(|p| p.status == "published") {
+            let loc = format!("{}/pages/{}", base, xml_escape(&p.slug));
+            urls.push_str(&format!(
+                "<url><loc>{loc}</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>\n"
+            ));
+        }
+    }
+
+    let body = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+{urls}</urlset>"#
+    );
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+        body,
+    )
+}
+
+pub async fn sitemap_index_xml(
+    State(pool): State<DbPool>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let _ = pool;
+    let host = host_from_headers(&headers);
+    let base = base_from_host(&host);
+    let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let body = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<sitemap><loc>{base}/sitemap.xml</loc><lastmod>{now}</lastmod></sitemap>
+</sitemapindex>"#
+    );
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+        body,
+    )
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+// ─── robots.txt ───────────────────────────────────────────────────────────────
+
+pub async fn robots_txt(
+    State(pool): State<DbPool>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let host = host_from_headers(&headers);
+    let base = base_from_host(&host);
+    let sitemap_url = format!("{}/sitemap.xml", base);
+
+    let custom = Setting::get(&pool, "robots_txt").await.unwrap_or_default();
+    let body = if custom.trim().is_empty() {
+        format!("User-agent: *\nAllow: /\n\nSitemap: {sitemap_url}\n")
+    } else {
+        // Append sitemap line if not already present
+        if custom.contains("Sitemap:") {
+            custom
+        } else {
+            format!("{}\n\nSitemap: {sitemap_url}\n", custom.trim())
+        }
+    };
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        body,
+    )
 }
