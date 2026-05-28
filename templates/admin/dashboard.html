@@ -4,6 +4,13 @@
 
 {% block content %}
 <div class="page-header"><h1>Dashboard</h1></div>
+
+{% if quick_draft_saved %}
+<div style="background:#d1fae5;color:#065f46;padding:.75rem 1rem;border-radius:4px;margin-bottom:1rem;">
+  Draft saved. <a href="/admin/posts" style="color:#065f46;font-weight:600;">View posts →</a>
+</div>
+{% endif %}
+
 <div class="stats">
   <div class="stat">
     <div class="stat-value">{{ total }}</div>
@@ -17,9 +24,82 @@
     <div class="stat-value">{{ drafts }}</div>
     <div class="stat-label">Drafts</div>
   </div>
+  <div class="stat">
+    <div class="stat-value">{{ comment_count }}</div>
+    <div class="stat-label">Comments</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ media_count }}</div>
+    <div class="stat-label">Media</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ user_count }}</div>
+    <div class="stat-label">Users</div>
+  </div>
 </div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
+
+  <!-- Quick Draft -->
+  <div class="card" style="margin-bottom:0;">
+    <h2 style="margin-top:0;font-size:1rem;color:#374151;">Quick Draft</h2>
+    <form method="post" action="/admin">
+      <div class="form-group">
+        <label for="qd-title">Title</label>
+        <input type="text" id="qd-title" name="title" placeholder="New post title…" required>
+      </div>
+      <div class="form-group">
+        <label for="qd-content">Content (optional)</label>
+        <textarea id="qd-content" name="content" rows="4" style="min-height:auto;resize:vertical;" placeholder="Write something…"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Save Draft</button>
+    </form>
+  </div>
+
+  <!-- Recent Comments -->
+  <div class="card" style="margin-bottom:0;">
+    <h2 style="margin-top:0;font-size:1rem;color:#374151;">Recent Comments</h2>
+    {% if recent_comments.is_empty() %}
+    <p style="color:#9ca3af;font-size:.88rem;">No comments yet.</p>
+    {% else %}
+    <ul style="list-style:none;padding:0;margin:0;">
+      {% for c in recent_comments %}
+      <li style="border-bottom:1px solid #f3f4f6;padding:.6rem 0;">
+        <div style="font-size:.82rem;color:#6b7280;">
+          <strong style="color:#374151;">{{ c.author_name }}</strong>
+          on <a href="/admin/posts" style="color:#2d5f3e;">{{ c.post_title }}</a>
+        </div>
+        <div style="font-size:.85rem;margin-top:.2rem;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:360px;">
+          {{ c.content }}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    <div style="margin-top:.75rem;">
+      <a href="/admin/comments" class="btn btn-secondary" style="font-size:.82rem;">All Comments →</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Site Health -->
 <div class="card">
-  <a href="/admin/posts/new" class="btn btn-primary">New Post</a>
-  <a href="/admin/posts" class="btn btn-secondary" style="margin-left:.5rem">All Posts</a>
+  <h2 style="margin-top:0;font-size:1rem;color:#374151;">Site Health</h2>
+  <table style="width:auto;">
+    <tbody>
+      <tr>
+        <td style="color:#6b7280;font-size:.88rem;padding:.35rem .8rem .35rem 0;border-bottom:1px solid #f3f4f6;">RedLeaf version</td>
+        <td style="font-size:.88rem;border-bottom:1px solid #f3f4f6;"><code>{{ app_version }}</code></td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280;font-size:.88rem;padding:.35rem .8rem .35rem 0;border-bottom:1px solid #f3f4f6;">Rust version</td>
+        <td style="font-size:.88rem;border-bottom:1px solid #f3f4f6;"><code>{{ rust_version }}</code></td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280;font-size:.88rem;padding:.35rem .8rem .35rem 0;">Database size</td>
+        <td style="font-size:.88rem;">{{ db_size_kb }} KB</td>
+      </tr>
+    </tbody>
+  </table>
 </div>
 {% endblock %}

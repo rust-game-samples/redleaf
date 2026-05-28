@@ -7,10 +7,25 @@
   <h1>Posts</h1>
   <a href="/admin/posts/new" class="btn btn-primary">New Post</a>
 </div>
+
+<form id="bulk-form" method="post" action="/admin/posts/bulk" style="margin-bottom:.75rem;">
+  <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+    <select name="action" style="padding:.4rem .6rem;border:1px solid #d1d5db;border-radius:4px;font-size:.88rem;background:white;">
+      <option value="">— Bulk Action —</option>
+      <option value="publish">Publish</option>
+      <option value="unpublish">Unpublish</option>
+      <option value="delete">Delete</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Apply</button>
+    <span id="bulk-count" style="color:#6b7280;font-size:.85rem;"></span>
+  </div>
+</form>
+
 <div class="card">
   <table>
     <thead>
       <tr>
+        <th style="width:2rem;"><input type="checkbox" id="check-all" title="Select all"></th>
         <th>#</th>
         <th>Title</th>
         <th>Slug</th>
@@ -23,11 +38,12 @@
     <tbody>
       {% if posts.is_empty() %}
       <tr>
-        <td colspan="7" class="empty">No posts yet. <a href="/admin/posts/new">Create one!</a></td>
+        <td colspan="8" class="empty">No posts yet. <a href="/admin/posts/new">Create one!</a></td>
       </tr>
       {% else %}
       {% for post in posts %}
       <tr>
+        <td><input type="checkbox" class="bulk-check" value="{{ post.id }}"></td>
         <td style="color:#9ca3af;font-size:.85rem">{{ post.id }}</td>
         <td><strong>{{ post.title }}</strong></td>
         <td style="color:#6b7280;font-size:.85rem">{{ post.slug }}</td>
@@ -87,4 +103,45 @@
   </div>
 </div>
 {% endif %}
+
+<script>
+(function () {
+  var form = document.getElementById('bulk-form');
+  var checkAll = document.getElementById('check-all');
+  var countLabel = document.getElementById('bulk-count');
+
+  function updateCount() {
+    var n = document.querySelectorAll('.bulk-check:checked').length;
+    countLabel.textContent = n > 0 ? n + ' selected' : '';
+  }
+
+  checkAll.addEventListener('change', function () {
+    document.querySelectorAll('.bulk-check').forEach(function (cb) { cb.checked = checkAll.checked; });
+    updateCount();
+  });
+
+  document.querySelectorAll('.bulk-check').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var all = document.querySelectorAll('.bulk-check');
+      checkAll.checked = Array.from(all).every(function (c) { return c.checked; });
+      updateCount();
+    });
+  });
+
+  form.addEventListener('submit', function (e) {
+    var action = form.querySelector('[name=action]').value;
+    if (!action) { e.preventDefault(); alert('Please select a bulk action.'); return; }
+    var checked = document.querySelectorAll('.bulk-check:checked');
+    if (checked.length === 0) { e.preventDefault(); alert('Please select at least one post.'); return; }
+    if (action === 'delete' && !confirm('Delete ' + checked.length + ' post(s)? This cannot be undone.')) { e.preventDefault(); return; }
+    checked.forEach(function (cb) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'ids[]';
+      input.value = cb.value;
+      form.appendChild(input);
+    });
+  });
+}());
+</script>
 {% endblock %}

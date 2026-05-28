@@ -27,6 +27,7 @@ use crate::{
     hooks,
     middleware::has_capability,
     models::{
+        ActivityLog, ActivityLogWithUser,
         Category, CategoryWithCount,
         Comment, CommentWithPost,
         Media,
@@ -190,6 +191,20 @@ struct DashboardTemplate {
     total: i64,
     published: i64,
     drafts: i64,
+    comment_count: i64,
+    media_count: i64,
+    user_count: i64,
+    recent_comments: Vec<CommentWithPost>,
+    quick_draft_saved: bool,
+    db_size_kb: i64,
+    rust_version: String,
+    app_version: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin/activity_logs.html")]
+struct ActivityLogListTemplate {
+    logs: Vec<ActivityLogWithUser>,
 }
 
 #[derive(Template)]
@@ -326,11 +341,13 @@ pub fn admin_login_routes() -> Router<DbPool> {
 
 pub fn admin_routes() -> Router<DbPool> {
     Router::new()
-        .route("/", get(dashboard))
+        .route("/", get(dashboard).post(quick_draft))
+        .route("/activity-logs", get(list_activity_logs))
         .route("/posts", get(list_posts).post(create_post))
         .route("/posts/new", get(new_post_form))
         .route("/posts/{id}", post(update_post))
         .route("/posts/{id}/edit", get(edit_post_form))
+        .route("/posts/bulk", post(bulk_posts))
         .route("/posts/{id}/delete", post(delete_post))
         .route("/posts/{id}/toggle", post(toggle_published))
         .route("/categories", get(list_categories).post(create_category))
@@ -338,8 +355,10 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/categories/{id}/edit", get(edit_category_form))
         .route("/categories/{id}", post(update_category))
         .route("/categories/{id}/delete", post(delete_category))
+        .route("/categories/bulk-delete", post(bulk_delete_categories))
         .route("/tags", get(list_tags))
         .route("/tags/{id}/delete", post(delete_tag))
+        .route("/tags/bulk-delete", post(bulk_delete_tags))
         .route("/settings", get(settings_page).post(settings_save))
         .route("/settings/robots", post(save_robots_txt))
         .route("/media", get(list_media))
@@ -402,6 +421,7 @@ async fn login_submit(
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
     hooks::do_action("on_user_login");
+    ActivityLog::create(&pool, Some(user.id), "user.login", None, None).await.ok();
 
     let cookie = format!(
         "session={}; HttpOnly; Path=/; SameSite=Strict; Max-Age=604800",
@@ -473,6 +493,19 @@ async fn register_submit(
         .unwrap())
 }
 
+#[derive(Debug, Deserialize)]
+struct BulkPostForm {
+    action: String,
+    #[serde(rename = "ids[]", default)]
+    ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkDeleteForm {
+    #[serde(rename = "ids[]", default)]
+    ids: Vec<i64>,
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 async fn resolve_tags(pool: &DbPool, input: Option<&str>) -> Result<Vec<i64>, AppError> {
@@ -523,15 +556,90 @@ fn meta_pairs_from_form(form: &PostForm) -> Vec<(String, String)> {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
-async fn dashboard(State(pool): State<DbPool>) -> Result<Response, AppError> {
-    let (total, published) = tokio::join!(
+#[derive(Deserialize, Default)]
+struct DashboardQuery {
+    draft: Option<String>,
+}
+
+async fn dashboard(
+    State(pool): State<DbPool>,
+    Query(q): Query<DashboardQuery>,
+) -> Result<Response, AppError> {
+    let (total, published, comment_count, media_count, user_count) = tokio::join!(
         Post::count_all(&pool),
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM posts WHERE published = 1")
-            .fetch_one(&pool),
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM posts WHERE published = 1").fetch_one(&pool),
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM comments").fetch_one(&pool),
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM media").fetch_one(&pool),
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users").fetch_one(&pool),
     );
+    let recent_comments = sqlx::query_as::<_, CommentWithPost>(
+        r#"SELECT c.*, p.title AS post_title, p.slug AS post_slug
+           FROM comments c JOIN posts p ON p.id = c.post_id
+           ORDER BY c.created_at DESC LIMIT 5"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap_or_default();
+
+    let page_count = sqlx::query_scalar::<_, i64>("PRAGMA page_count").fetch_one(&pool).await.unwrap_or(0);
+    let page_size  = sqlx::query_scalar::<_, i64>("PRAGMA page_size").fetch_one(&pool).await.unwrap_or(4096);
+    let db_size_kb = (page_count * page_size) / 1024;
+
     let total = total?;
     let published = published?;
-    render(DashboardTemplate { total, published, drafts: total - published })
+    render(DashboardTemplate {
+        total,
+        published,
+        drafts: total - published,
+        comment_count: comment_count?,
+        media_count: media_count?,
+        user_count: user_count?,
+        recent_comments,
+        quick_draft_saved: q.draft.as_deref() == Some("saved"),
+        db_size_kb,
+        rust_version: env!("RUST_VERSION").to_string(),
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
+#[derive(Deserialize)]
+struct QuickDraftForm {
+    title: String,
+    content: Option<String>,
+}
+
+async fn quick_draft(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Form(form): Form<QuickDraftForm>,
+) -> Result<Response, AppError> {
+    let title = form.title.trim().to_string();
+    if !title.is_empty() {
+        let slug = slugify(&title);
+        let payload = CreatePost {
+            title: title.clone(),
+            slug,
+            content: form.content.unwrap_or_default(),
+            excerpt: None,
+            published: false,
+            sticky: false,
+            author_id: Some(claims.sub),
+            category_id: None,
+            featured_image_id: None,
+            scheduled_at: None,
+            seo_title: String::new(),
+            seo_description: String::new(),
+        };
+        if Post::create(&pool, payload).await.is_ok() {
+            ActivityLog::create(&pool, Some(claims.sub), "post.created", Some("post"), None).await.ok();
+        }
+    }
+    Ok(Redirect::to("/admin?draft=saved").into_response())
+}
+
+async fn list_activity_logs(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let logs = ActivityLog::find_recent(&pool, 200).await?;
+    render(ActivityLogListTemplate { logs })
 }
 
 async fn list_posts(
@@ -578,6 +686,7 @@ async fn create_post(
             let tag_ids = resolve_tags(&pool, tag_input.as_deref()).await?;
             Post::set_tags(&pool, post.id, &tag_ids).await?;
             PostMeta::replace_all(&pool, post.id, &meta_pairs).await?;
+            ActivityLog::create(&pool, Some(claims.sub), "post.created", Some("post"), Some(post.id)).await.ok();
             Ok(Redirect::to("/admin/posts").into_response())
         }
         Err(e) => {
@@ -673,28 +782,67 @@ async fn update_post(
     let tag_ids = resolve_tags(&pool, form.tags.as_deref()).await?;
     Post::set_tags(&pool, post.id, &tag_ids).await?;
     PostMeta::replace_all(&pool, post.id, &meta_pairs_from_form(&form)).await?;
+    ActivityLog::create(&pool, Some(claims.sub), "post.updated", Some("post"), Some(id)).await.ok();
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
 async fn delete_post(
     State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     Post::delete(&pool, id).await?;
+    ActivityLog::create(&pool, Some(claims.sub), "post.deleted", Some("post"), Some(id)).await.ok();
+    Ok(Redirect::to("/admin/posts").into_response())
+}
+
+async fn bulk_posts(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Form(form): Form<BulkPostForm>,
+) -> Result<Response, AppError> {
+    let published = match form.action.as_str() {
+        "publish" => Some(true),
+        "unpublish" => Some(false),
+        _ => None,
+    };
+    for id in &form.ids {
+        if let Some(pub_val) = published {
+            let payload = UpdatePost {
+                title: None, slug: None, content: None, excerpt: None,
+                published: Some(pub_val), sticky: None,
+                category_id: None, featured_image_id: None, scheduled_at: None,
+                seo_title: None, seo_description: None,
+            };
+            Post::update(&pool, *id, payload).await.ok();
+        } else if form.action == "delete" {
+            Post::delete(&pool, *id).await?;
+        }
+    }
+    if !form.ids.is_empty() {
+        let action = match form.action.as_str() {
+            "publish"   => "post.bulk_publish",
+            "unpublish" => "post.bulk_unpublish",
+            _           => "post.bulk_delete",
+        };
+        ActivityLog::create(&pool, Some(claims.sub), action, Some("post"), None).await.ok();
+    }
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
 async fn toggle_published(
     State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     let post = Post::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+    let next_published = !post.published;
     let payload = UpdatePost {
         title: None,
         slug: None,
         content: None,
         excerpt: None,
-        published: Some(!post.published),
+        published: Some(next_published),
         sticky: None,
         category_id: None,
         featured_image_id: None,
@@ -703,6 +851,8 @@ async fn toggle_published(
         seo_description: None,
     };
     Post::update(&pool, id, payload).await?;
+    let action = if next_published { "post.published" } else { "post.unpublished" };
+    ActivityLog::create(&pool, Some(claims.sub), action, Some("post"), Some(id)).await.ok();
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
@@ -802,6 +952,16 @@ async fn delete_category(
     Ok(Redirect::to("/admin/categories").into_response())
 }
 
+async fn bulk_delete_categories(
+    State(pool): State<DbPool>,
+    Form(form): Form<BulkDeleteForm>,
+) -> Result<Response, AppError> {
+    for id in &form.ids {
+        Category::delete(&pool, *id).await?;
+    }
+    Ok(Redirect::to("/admin/categories").into_response())
+}
+
 // ─── Tag handlers ─────────────────────────────────────────────────────────────
 
 async fn list_tags(State(pool): State<DbPool>) -> Result<Response, AppError> {
@@ -814,6 +974,16 @@ async fn delete_tag(
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     Tag::delete(&pool, id).await?;
+    Ok(Redirect::to("/admin/tags").into_response())
+}
+
+async fn bulk_delete_tags(
+    State(pool): State<DbPool>,
+    Form(form): Form<BulkDeleteForm>,
+) -> Result<Response, AppError> {
+    for id in &form.ids {
+        Tag::delete(&pool, *id).await?;
+    }
     Ok(Redirect::to("/admin/tags").into_response())
 }
 

@@ -6,11 +6,20 @@
 <div class="page-header">
   <h1>Tags</h1>
 </div>
-<p style="color:#6b7280;margin-bottom:1.5rem;">Tags are created automatically when you add them to posts.</p>
+<p style="color:#6b7280;margin-bottom:1rem;">Tags are created automatically when you add them to posts.</p>
+
+<form id="tag-bulk-form" method="post" action="/admin/tags/bulk-delete" style="margin-bottom:.75rem;">
+  <div style="display:flex;align-items:center;gap:.5rem;">
+    <button type="submit" class="btn btn-danger">Delete Selected</button>
+    <span id="tag-bulk-count" style="color:#6b7280;font-size:.85rem;"></span>
+  </div>
+</form>
+
 <div class="card">
   <table>
     <thead>
       <tr>
+        <th style="width:2rem;"><input type="checkbox" id="tag-check-all" title="Select all"></th>
         <th>#</th>
         <th>Name</th>
         <th>Slug</th>
@@ -21,11 +30,12 @@
     <tbody>
       {% if tags.is_empty() %}
       <tr>
-        <td colspan="5" class="empty">No tags yet. Add tags when creating or editing posts.</td>
+        <td colspan="6" class="empty">No tags yet. Add tags when creating or editing posts.</td>
       </tr>
       {% else %}
       {% for tag in tags %}
       <tr>
+        <td><input type="checkbox" class="tag-check" value="{{ tag.id }}"></td>
         <td style="color:#9ca3af;font-size:.85rem">{{ tag.id }}</td>
         <td><strong>{{ tag.name }}</strong></td>
         <td style="color:#6b7280;font-size:.85rem">{{ tag.slug }}</td>
@@ -44,4 +54,43 @@
     </tbody>
   </table>
 </div>
+
+<script>
+(function () {
+  var form = document.getElementById('tag-bulk-form');
+  var checkAll = document.getElementById('tag-check-all');
+  var countLabel = document.getElementById('tag-bulk-count');
+
+  function updateCount() {
+    var n = document.querySelectorAll('.tag-check:checked').length;
+    countLabel.textContent = n > 0 ? n + ' selected' : '';
+  }
+
+  checkAll.addEventListener('change', function () {
+    document.querySelectorAll('.tag-check').forEach(function (cb) { cb.checked = checkAll.checked; });
+    updateCount();
+  });
+
+  document.querySelectorAll('.tag-check').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var all = document.querySelectorAll('.tag-check');
+      checkAll.checked = Array.from(all).every(function (c) { return c.checked; });
+      updateCount();
+    });
+  });
+
+  form.addEventListener('submit', function (e) {
+    var checked = document.querySelectorAll('.tag-check:checked');
+    if (checked.length === 0) { e.preventDefault(); alert('Please select at least one tag.'); return; }
+    if (!confirm('Delete ' + checked.length + ' tag(s)?')) { e.preventDefault(); return; }
+    checked.forEach(function (cb) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'ids[]';
+      input.value = cb.value;
+      form.appendChild(input);
+    });
+  });
+}());
+</script>
 {% endblock %}

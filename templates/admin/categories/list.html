@@ -7,10 +7,19 @@
   <h1>Categories</h1>
   <a href="/admin/categories/new" class="btn btn-primary">New Category</a>
 </div>
+
+<form id="cat-bulk-form" method="post" action="/admin/categories/bulk-delete" style="margin-bottom:.75rem;">
+  <div style="display:flex;align-items:center;gap:.5rem;">
+    <button type="submit" class="btn btn-danger">Delete Selected</button>
+    <span id="cat-bulk-count" style="color:#6b7280;font-size:.85rem;"></span>
+  </div>
+</form>
+
 <div class="card">
   <table>
     <thead>
       <tr>
+        <th style="width:2rem;"><input type="checkbox" id="cat-check-all" title="Select all"></th>
         <th>#</th>
         <th>Name</th>
         <th>Slug</th>
@@ -21,11 +30,12 @@
     <tbody>
       {% if categories.is_empty() %}
       <tr>
-        <td colspan="5" class="empty">No categories yet. <a href="/admin/categories/new">Create one!</a></td>
+        <td colspan="6" class="empty">No categories yet. <a href="/admin/categories/new">Create one!</a></td>
       </tr>
       {% else %}
       {% for cat in categories %}
       <tr>
+        <td><input type="checkbox" class="cat-check" value="{{ cat.id }}"></td>
         <td style="color:#9ca3af;font-size:.85rem">{{ cat.id }}</td>
         <td><strong>{{ cat.name }}</strong></td>
         <td style="color:#6b7280;font-size:.85rem">{{ cat.slug }}</td>
@@ -45,4 +55,43 @@
     </tbody>
   </table>
 </div>
+
+<script>
+(function () {
+  var form = document.getElementById('cat-bulk-form');
+  var checkAll = document.getElementById('cat-check-all');
+  var countLabel = document.getElementById('cat-bulk-count');
+
+  function updateCount() {
+    var n = document.querySelectorAll('.cat-check:checked').length;
+    countLabel.textContent = n > 0 ? n + ' selected' : '';
+  }
+
+  checkAll.addEventListener('change', function () {
+    document.querySelectorAll('.cat-check').forEach(function (cb) { cb.checked = checkAll.checked; });
+    updateCount();
+  });
+
+  document.querySelectorAll('.cat-check').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var all = document.querySelectorAll('.cat-check');
+      checkAll.checked = Array.from(all).every(function (c) { return c.checked; });
+      updateCount();
+    });
+  });
+
+  form.addEventListener('submit', function (e) {
+    var checked = document.querySelectorAll('.cat-check:checked');
+    if (checked.length === 0) { e.preventDefault(); alert('Please select at least one category.'); return; }
+    if (!confirm('Delete ' + checked.length + ' categor' + (checked.length === 1 ? 'y' : 'ies') + '? Posts will be uncategorized.')) { e.preventDefault(); return; }
+    checked.forEach(function (cb) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'ids[]';
+      input.value = cb.value;
+      form.appendChild(input);
+    });
+  });
+}());
+</script>
 {% endblock %}

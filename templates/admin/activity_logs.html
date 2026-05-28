@@ -1,0 +1,53 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Activity Log{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Activity Log</h1>
+</div>
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>User</th>
+        <th>Action</th>
+        <th>Target</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if logs.is_empty() %}
+      <tr>
+        <td colspan="4" class="empty">No activity yet.</td>
+      </tr>
+      {% else %}
+      {% for log in logs %}
+      <tr>
+        <td style="white-space:nowrap;font-size:.82rem;color:#6b7280;">{{ log.created_at.format("%Y-%m-%d %H:%M") }}</td>
+        <td style="font-size:.88rem;">
+          {% if let Some(username) = &log.username %}
+          {{ username }}
+          {% else %}
+          <span style="color:#9ca3af;">System</span>
+          {% endif %}
+        </td>
+        <td style="font-size:.88rem;font-weight:500;">{{ log.display_action() }}</td>
+        <td style="font-size:.82rem;color:#6b7280;">
+          {% if let Some(tt) = &log.target_type %}
+          {% if let Some(tid) = log.target_id %}
+          {{ tt }}#{{ tid }}
+          {% else %}
+          {{ tt }}
+          {% endif %}
+          {% else %}
+          <span style="color:#d1d5db;">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,3 +1,4 @@
+pub mod activity_log;
 pub mod category;
 pub mod comment;
 pub mod media;
@@ -11,6 +12,7 @@ pub mod user;
 pub mod nav_menu;
 pub mod widget;
 
+pub use activity_log::{ActivityLog, ActivityLogWithUser};
 pub use category::{Category, CategoryWithCount};
 pub use comment::{Comment, CommentWithPost};
 pub use media::Media;
