@@ -20,6 +20,46 @@ where
     }
 }
 
+/// Deserialize a single integer-string OR a sequence of integer-strings into
+/// `Vec<i64>`.  HTML forms send a single value (not a sequence) when only one
+/// checkbox is checked, which breaks the default `Vec` deserializer.
+fn one_or_many_i64<'de, D>(deserializer: D) -> Result<Vec<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{SeqAccess, Unexpected, Visitor};
+    use std::fmt;
+
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = Vec<i64>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("integer or sequence of integers")
+        }
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Vec<i64>, E> {
+            Ok(vec![v])
+        }
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Vec<i64>, E> {
+            Ok(vec![v as i64])
+        }
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Vec<i64>, E> {
+            if v.is_empty() { return Ok(vec![]); }
+            v.parse::<i64>().map(|n| vec![n]).map_err(|_| {
+                E::invalid_value(Unexpected::Str(v), &"an integer string")
+            })
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<i64>, A::Error> {
+            let mut out = Vec::new();
+            while let Some(s) = seq.next_element::<String>()? {
+                if s.is_empty() { continue; }
+                out.push(s.parse::<i64>().map_err(serde::de::Error::custom)?);
+            }
+            Ok(out)
+        }
+    }
+    deserializer.deserialize_any(V)
+}
+
 use std::sync::Arc;
 use crate::{
     auth::{generate_token, Claims},
@@ -538,13 +578,13 @@ async fn register_submit(
 #[derive(Debug, Deserialize)]
 struct BulkPostForm {
     action: String,
-    #[serde(rename = "ids[]", default)]
+    #[serde(rename = "ids[]", default, deserialize_with = "one_or_many_i64")]
     ids: Vec<i64>,
 }
 
 #[derive(Debug, Deserialize)]
 struct BulkDeleteForm {
-    #[serde(rename = "ids[]", default)]
+    #[serde(rename = "ids[]", default, deserialize_with = "one_or_many_i64")]
     ids: Vec<i64>,
 }
 
@@ -1519,7 +1559,7 @@ async fn delete_widget(
 
 #[derive(Deserialize)]
 struct ReorderForm {
-    #[serde(rename = "ids[]")]
+    #[serde(rename = "ids[]", deserialize_with = "one_or_many_i64")]
     ids: Vec<i64>,
 }
 
@@ -1685,9 +1725,11 @@ struct MenuItemForm {
     label: Option<String>,
     url: Option<String>,
     // page
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     ref_id_page: Option<i64>,
     label_page: Option<String>,
     // category
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     ref_id_cat: Option<i64>,
     label_cat: Option<String>,
     #[serde(default, deserialize_with = "empty_string_as_none")]
@@ -1725,7 +1767,7 @@ async fn delete_menu_item(
 
 #[derive(Deserialize)]
 struct ReorderItemsForm {
-    #[serde(rename = "ids[]")]
+    #[serde(rename = "ids[]", deserialize_with = "one_or_many_i64")]
     ids: Vec<i64>,
 }
 
