@@ -890,6 +890,7 @@ struct PageFormInput {
     slug: Option<String>,
     content: String,
     status: Option<String>,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
     parent_id: Option<i64>,
 }
 
