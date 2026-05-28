@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}{{ author_display_name }} — {{ site_name }}{% endblock %}
+
+{% block head %}
+{{ self.breadcrumb_json_ld()|safe }}
+{% endblock %}
+
+{% block style %}
+body { background: #f5f5f5; }
+.site-header { background: #2d5f3e; color: white; }
+.header-inner { max-width: 1100px; margin: 0 auto; padding: .75rem 1.5rem; display: flex; align-items: center; gap: 1.5rem; }
+.site-brand { color: white; text-decoration: none; font-size: 1.15rem; font-weight: 700; margin-right: auto; }
+.primary-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 1rem; }
+.primary-nav li { position: relative; }
+.primary-nav a { color: rgba(255,255,255,.9); text-decoration: none; font-size: .9rem; }
+.primary-nav a:hover { color: white; text-decoration: underline; }
+.primary-nav li ul { display: none; position: absolute; top: 100%; left: 0; background: #2d5f3e; border-radius: 4px; box-shadow: 0 4px 8px rgba(0,0,0,.2); min-width: 160px; z-index: 100; }
+.primary-nav li:hover ul { display: block; }
+.primary-nav li ul a { display: block; padding: .5rem 1rem; white-space: nowrap; }
+.breadcrumb-nav { padding: .5rem 0; font-size: .85rem; }
+.breadcrumb { list-style: none; margin: 0; padding: 0; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.breadcrumb-item + .breadcrumb-item::before { content: "›"; color: #9ca3af; }
+.breadcrumb-item a { color: #2d5f3e; text-decoration: none; }
+.breadcrumb-item a:hover { text-decoration: underline; }
+.breadcrumb-item.active { color: #6b7280; }
+main { max-width: 800px; margin: 0 auto; padding: 2rem 1.5rem; }
+.author-card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); padding: 1.5rem; margin-bottom: 2rem; display: flex; gap: 1.25rem; align-items: flex-start; }
+.author-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: #d1fae5; }
+.author-avatar-placeholder { width: 80px; height: 80px; border-radius: 50%; background: #d1fae5; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #2d5f3e; flex-shrink: 0; }
+.author-info h1 { margin: 0 0 .25rem; color: #2d5f3e; font-size: 1.5rem; }
+.author-bio { color: #4b5563; margin: .4rem 0; font-size: .95rem; }
+.author-website { font-size: .9rem; }
+.author-website a { color: #2d5f3e; }
+h2.posts-heading { color: #2d5f3e; margin-top: 0; font-size: 1.1rem; }
+.post { background: white; padding: 1.5rem; margin-bottom: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+.post h3 { margin-top: 0; }
+.post h3 a { text-decoration: none; color: #2d5f3e; }
+.post h3 a:hover { text-decoration: underline; }
+.meta { color: #666; font-size: .9rem; margin: .25rem 0 .75rem; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 2rem; }
+.pag-btn { display: inline-block; padding: .45rem 1rem; border-radius: 6px; background: white;
+           box-shadow: 0 1px 3px rgba(0,0,0,.1); text-decoration: none; color: #2d5f3e; font-weight: 500; }
+.pag-btn:hover { background: #f0f0f0; }
+.pag-btn.disabled { color: #aaa; pointer-events: none; }
+.pag-info { color: #666; font-size: .9rem; }
+{% endblock %}
+
+{% block body %}
+{% include "themes/default/partials/site_header.html" %}
+<main>
+  {{ self.the_breadcrumb()|safe }}
+
+  <div class="author-card">
+    {% if author_avatar_url.is_empty() %}
+    <div class="author-avatar-placeholder">{{ self.author_initial() }}</div>
+    {% else %}
+    <img class="author-avatar" src="{{ author_avatar_url }}" alt="{{ author_display_name }}">
+    {% endif %}
+    <div class="author-info">
+      <h1>{{ author_display_name }}</h1>
+      {% if !author_bio.is_empty() %}
+      <p class="author-bio">{{ author_bio }}</p>
+      {% endif %}
+      {% if !author_website.is_empty() %}
+      <p class="author-website"><a href="{{ author_website }}" target="_blank" rel="noopener">{{ author_website }}</a></p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h2 class="posts-heading">Posts by {{ author_display_name }}</h2>
+  {% if posts.is_empty() %}
+  <p style="color:#666">No posts yet.</p>
+  {% else %}
+  {% for post in posts %}
+  <div class="post">
+    <h3><a href="/posts/{{ post.slug }}">{{ post.title }}</a></h3>
+    <p class="meta">{{ post.created_at | rl_date("%Y-%m-%d") }}</p>
+    {% if let Some(excerpt) = &post.excerpt %}
+    <p>{{ excerpt }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% include "themes/default/partials/pagination.html" %}
+</main>
+{% endblock %}

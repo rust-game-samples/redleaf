@@ -325,6 +325,34 @@ impl Post {
         .await
     }
 
+    pub async fn find_by_author_paginated(
+        pool: &DbPool,
+        author_id: i64,
+        page: i64,
+        per_page: i64,
+    ) -> Result<Vec<PostWithAuthor>, sqlx::Error> {
+        let offset = (page - 1) * per_page;
+        let sql = format!(
+            "{} WHERE p.published = 1 AND p.author_id = ? ORDER BY p.created_at DESC LIMIT ? OFFSET ?",
+            WITH_AUTHOR_SELECT
+        );
+        sqlx::query_as::<_, PostWithAuthor>(&sql)
+            .bind(author_id)
+            .bind(per_page)
+            .bind(offset)
+            .fetch_all(pool)
+            .await
+    }
+
+    pub async fn count_by_author(pool: &DbPool, author_id: i64) -> Result<i64, sqlx::Error> {
+        sqlx::query_scalar(
+            "SELECT COUNT(*) FROM posts WHERE published = 1 AND author_id = ?",
+        )
+        .bind(author_id)
+        .fetch_one(pool)
+        .await
+    }
+
     // ─── Tags ─────────────────────────────────────────────────────────────────
 
     pub async fn set_tags(

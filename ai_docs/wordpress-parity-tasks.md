@@ -131,22 +131,22 @@ WordPress に近づけるための機能追加タスク。
 
 ### ユーザーロールと権限
 
-- [ ] `roles` / `capabilities` テーブル設計（Administrator / Editor / Author / Contributor / Subscriber）
-- [ ] `users.role` カラム追加
-- [ ] 権限チェックミドルウェア (`require_capability("edit_posts")`)
-- [ ] 管理画面: ユーザー一覧・ロール変更 UI
+- [x] `roles` / `capabilities` テーブル設計（Administrator / Editor / Author / Contributor / Subscriber）
+- [x] `users.role` カラム追加
+- [x] 権限チェックミドルウェア (`require_capability("edit_posts")`)
+- [x] 管理画面: ユーザー一覧・ロール変更 UI
 
 ### ユーザープロフィール
 
-- [ ] `users` テーブルに `display_name` / `bio` / `website` / `avatar_url` カラム追加
-- [ ] 管理画面: プロフィール編集ページ (`/admin/profile`)
-- [ ] パスワード変更フォーム
+- [x] `users` テーブルに `display_name` / `bio` / `website` / `avatar_url` カラム追加
+- [x] 管理画面: プロフィール編集ページ (`/admin/profile`)
+- [x] パスワード変更フォーム
 
 ### 著者アーカイブページ
 
-- [ ] `GET /author/{username}` — 著者の公開投稿一覧ページ
-- [ ] 著者プロフィールカード（bio / アバター）の表示
-- [ ] REST API: `GET /api/users/{id}/posts`
+- [x] `GET /author/{username}` — 著者の公開投稿一覧ページ
+- [x] 著者プロフィールカード（bio / アバター）の表示
+- [x] REST API: `GET /api/users/{id}/posts`
 
 ---
 

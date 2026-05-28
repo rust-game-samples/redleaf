@@ -1,0 +1,76 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Your Profile</h1>
+</div>
+
+{% if let Some(msg) = saved %}
+<div style="background:#d1fae5;color:#065f46;padding:.75rem 1rem;border-radius:4px;margin-bottom:1rem;">{{ msg }}</div>
+{% endif %}
+{% if let Some(err) = error %}
+<div class="alert-error">{{ err }}</div>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+  <!-- Profile info -->
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1.1rem;color:#2d5f3e;">Profile Information</h2>
+    <form method="post" action="/admin/profile">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" value="{{ username }}" disabled style="background:#f9fafb;color:#6b7280;">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="text" value="{{ email }}" disabled style="background:#f9fafb;color:#6b7280;">
+      </div>
+      <div class="form-group">
+        <label for="display_name">Display Name</label>
+        <input type="text" id="display_name" name="display_name" value="{{ display_name }}">
+      </div>
+      <div class="form-group">
+        <label for="bio">Bio</label>
+        <textarea id="bio" name="bio" rows="4" style="width:100%;padding:.5rem .75rem;border:1px solid #d1d5db;border-radius:4px;font-family:inherit;font-size:.95rem;resize:vertical;">{{ bio }}</textarea>
+      </div>
+      <div class="form-group">
+        <label for="website">Website</label>
+        <input type="text" id="website" name="website" value="{{ website }}" placeholder="https://example.com">
+      </div>
+      <div class="form-group">
+        <label for="avatar_url">Avatar URL</label>
+        <input type="text" id="avatar_url" name="avatar_url" value="{{ avatar_url }}" placeholder="https://example.com/avatar.jpg">
+      </div>
+      <button type="submit" class="btn btn-primary">Save Profile</button>
+    </form>
+  </div>
+
+  <!-- Change password -->
+  <div class="card">
+    <h2 style="margin-top:0;font-size:1.1rem;color:#2d5f3e;">Change Password</h2>
+    {% if let Some(pw_err) = pw_error %}
+    <div class="alert-error">{{ pw_err }}</div>
+    {% endif %}
+    {% if let Some(pw_ok) = pw_saved %}
+    <div style="background:#d1fae5;color:#065f46;padding:.75rem 1rem;border-radius:4px;margin-bottom:1rem;">{{ pw_ok }}</div>
+    {% endif %}
+    <form method="post" action="/admin/profile/password">
+      <div class="form-group">
+        <label for="current_password">Current Password</label>
+        <input type="password" id="current_password" name="current_password" required>
+      </div>
+      <div class="form-group">
+        <label for="new_password">New Password</label>
+        <input type="password" id="new_password" name="new_password" required minlength="8">
+      </div>
+      <div class="form-group">
+        <label for="confirm_password">Confirm New Password</label>
+        <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
+      </div>
+      <button type="submit" class="btn btn-primary">Change Password</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

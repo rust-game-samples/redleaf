@@ -10,8 +10,14 @@ pub struct Claims {
     pub sub: i64,
     pub username: String,
     pub email: String,
+    #[serde(default = "default_role")]
+    pub role: String,
     pub iat: u64,
     pub exp: u64,
+}
+
+fn default_role() -> String {
+    "administrator".to_string()
 }
 
 impl Claims {
@@ -21,6 +27,7 @@ impl Claims {
             sub: user.id,
             username: user.username.clone(),
             email: user.email.clone(),
+            role: user.role.clone(),
             iat: now,
             exp: now + 60 * 60 * 24 * 7, // 7 days
         }

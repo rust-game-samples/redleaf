@@ -12,7 +12,7 @@ use crate::{
     db::DbPool,
     errors::{ApiError, AppError},
     models::{
-        Post, PostWithAuthor,
+        Post, PostWithAuthor, User,
         post::{CreatePost, UpdatePost},
     },
     util::{slugify, PER_PAGE},
@@ -62,6 +62,7 @@ pub fn api_public_routes() -> Router<DbPool> {
     Router::new()
         .route("/posts", get(list_posts))
         .route("/posts/{id}", get(show_post))
+        .route("/users/{id}/posts", get(user_posts))
 }
 
 /// Protected (Bearer JWT required): write endpoints.
@@ -182,4 +183,31 @@ async fn delete_post(
 
     Post::delete(&pool, id).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+// ─── User post listing ────────────────────────────────────────────────────────
+
+async fn user_posts(
+    State(pool): State<DbPool>,
+    Path(id): Path<i64>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response, ApiError> {
+    User::find_by_id(&pool, id).await?.ok_or(AppError::NotFound)?;
+
+    let page = q.page.unwrap_or(1).max(1);
+    let (posts, total) = tokio::join!(
+        Post::find_by_author_paginated(&pool, id, page, PER_PAGE),
+        Post::count_by_author(&pool, id),
+    );
+    let total = total?;
+    let total_pages = ((total as f64) / (PER_PAGE as f64)).ceil() as i64;
+
+    Ok(Json(PostListResponse {
+        items: posts?,
+        total,
+        page,
+        per_page: PER_PAGE,
+        total_pages: total_pages.max(1),
+    })
+    .into_response())
 }

@@ -14,7 +14,7 @@ use crate::{
     errors::AppError,
     filters,
     models::{NavMenu, Page, Post, PostWithAuthor, Setting, User, user::CreateUser},
-    util::{build_fts_query, render},
+    util::{build_fts_query, render, Pagination, PER_PAGE},
 };
 
 pub mod admin;
@@ -229,6 +229,94 @@ pub async fn setup_submit(
         .header(header::SET_COOKIE, cookie)
         .body(axum::body::Body::empty())
         .unwrap())
+}
+
+// ─── Author archive ───────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "themes/default/author.html")]
+struct AuthorTemplate {
+    author_display_name: String,
+    author_username: String,
+    author_bio: String,
+    author_website: String,
+    author_avatar_url: String,
+    posts: Vec<PostWithAuthor>,
+    paging: Pagination,
+    site_name: String,
+    nav_menus: HashMap<String, String>,
+}
+
+impl AuthorTemplate {
+    fn render_nav_menu(&self, location: &str) -> &str {
+        self.nav_menus.get(location).map(|s| s.as_str()).unwrap_or("")
+    }
+
+    fn author_initial(&self) -> String {
+        self.author_display_name
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "?".into())
+    }
+
+    fn the_breadcrumb(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_html};
+        let items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+            BreadcrumbItem { label: self.author_display_name.clone(), url: None },
+        ];
+        breadcrumb_html(&items)
+    }
+
+    fn breadcrumb_json_ld(&self) -> String {
+        use crate::models::nav_menu::{BreadcrumbItem, breadcrumb_json_ld};
+        let items = vec![
+            BreadcrumbItem { label: "Home".into(), url: Some("/".into()) },
+            BreadcrumbItem {
+                label: self.author_display_name.clone(),
+                url: Some(format!("/author/{}", self.author_username)),
+            },
+        ];
+        breadcrumb_json_ld(&items)
+    }
+}
+
+#[derive(Deserialize, Default)]
+pub struct AuthorQuery {
+    pub page: Option<i64>,
+}
+
+pub async fn author_page(
+    State(pool): State<DbPool>,
+    Path(username): Path<String>,
+    Query(q): Query<AuthorQuery>,
+) -> Result<Response, AppError> {
+    let user = User::find_by_username(&pool, &username).await?
+        .ok_or(AppError::NotFound)?;
+
+    let page = q.page.unwrap_or(1).max(1);
+    let (posts, total, site_name, nav_menus) = tokio::join!(
+        Post::find_by_author_paginated(&pool, user.id, page, PER_PAGE),
+        Post::count_by_author(&pool, user.id),
+        Setting::site_name(&pool),
+        NavMenu::prerender_all(&pool),
+    );
+    let total = total?;
+    let paging = Pagination::new(page, total, PER_PAGE, format!("/author/{}", username));
+
+    let display_name = user.effective_display_name().to_string();
+    render(AuthorTemplate {
+        author_display_name: display_name,
+        author_username: user.username,
+        author_bio: user.bio,
+        author_website: user.website,
+        author_avatar_url: user.avatar_url,
+        posts: posts?,
+        paging,
+        site_name,
+        nav_menus,
+    })
 }
 
 // ─── 404 fallback ─────────────────────────────────────────────────────────────

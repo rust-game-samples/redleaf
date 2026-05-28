@@ -23,6 +23,8 @@ use crate::{
     auth::{generate_token, Claims},
     db::DbPool,
     errors::AppError,
+    filters,
+    middleware::has_capability,
     models::{
         Category, CategoryWithCount,
         Media,
@@ -35,11 +37,41 @@ use crate::{
         Tag, TagWithCount,
         Widget, WidgetArea,
         post::{CreatePost, UpdatePost},
-        user::{CreateUser, LoginUser},
+        user::{CreateUser, LoginUser, UpdateProfile},
         User,
     },
     util::{render, slugify, Pagination, PER_PAGE},
 };
+
+// ─── User templates ───────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "admin/users/list.html")]
+struct UserListTemplate {
+    users: Vec<User>,
+    roles: Vec<String>,
+}
+
+impl UserListTemplate {
+    fn role_selected(&self, role: &str, current: &str) -> bool {
+        role == current
+    }
+}
+
+#[derive(Template)]
+#[template(path = "admin/profile.html")]
+struct ProfileTemplate {
+    username: String,
+    email: String,
+    display_name: String,
+    bio: String,
+    website: String,
+    avatar_url: String,
+    saved: Option<String>,
+    error: Option<String>,
+    pw_saved: Option<String>,
+    pw_error: Option<String>,
+}
 
 // ─── Login / register templates ──────────────────────────────────────────────
 
@@ -311,6 +343,10 @@ pub fn admin_routes() -> Router<DbPool> {
         .route("/menus/{id}/items/reorder", post(reorder_menu_items))
         .route("/menus/{id}/items/{item_id}", post(update_menu_item))
         .route("/menus/{id}/items/{item_id}/delete", post(delete_menu_item))
+        .route("/users", get(list_users))
+        .route("/users/{id}/role", post(update_user_role))
+        .route("/profile", get(edit_profile_form).post(update_profile))
+        .route("/profile/password", post(change_password))
 }
 
 // ─── Login / logout handlers ─────────────────────────────────────────────────
@@ -1396,4 +1432,132 @@ async fn resolve_item_fields(pool: &DbPool, form: &MenuItemForm) -> (String, Str
             ("custom".into(), label, url, None)
         }
     }
+}
+
+// ─── User / role handlers ─────────────────────────────────────────────────────
+
+const ALL_ROLES: &[&str] = &["administrator", "editor", "author", "contributor", "subscriber"];
+
+async fn list_users(State(pool): State<DbPool>) -> Result<Response, AppError> {
+    let users = User::find_all(&pool).await?;
+    let roles: Vec<String> = ALL_ROLES.iter().map(|s| s.to_string()).collect();
+    render(UserListTemplate { users, roles })
+}
+
+#[derive(Deserialize)]
+struct RoleForm {
+    role: String,
+}
+
+async fn update_user_role(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<i64>,
+    Form(form): Form<RoleForm>,
+) -> Result<Response, AppError> {
+    if !has_capability(&claims.role, "manage_users") {
+        return Err(AppError::Internal("Forbidden".into()));
+    }
+    let role = if ALL_ROLES.contains(&form.role.as_str()) { form.role.as_str() } else { "subscriber" };
+    User::update_role(&pool, id, role).await?;
+    Ok(Redirect::to("/admin/users").into_response())
+}
+
+// ─── Profile handlers ─────────────────────────────────────────────────────────
+
+async fn edit_profile_form(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Response, AppError> {
+    let user = User::find_by_id(&pool, claims.sub).await?.ok_or(AppError::NotFound)?;
+    render(ProfileTemplate {
+        username: user.username,
+        email: user.email,
+        display_name: user.display_name,
+        bio: user.bio,
+        website: user.website,
+        avatar_url: user.avatar_url,
+        saved: None,
+        error: None,
+        pw_saved: None,
+        pw_error: None,
+    })
+}
+
+#[derive(Deserialize)]
+struct ProfileForm {
+    display_name: Option<String>,
+    bio: Option<String>,
+    website: Option<String>,
+    avatar_url: Option<String>,
+}
+
+async fn update_profile(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Form(form): Form<ProfileForm>,
+) -> Result<Response, AppError> {
+    let profile = UpdateProfile {
+        display_name: form.display_name.unwrap_or_default().trim().to_string(),
+        bio: form.bio.unwrap_or_default().trim().to_string(),
+        website: form.website.unwrap_or_default().trim().to_string(),
+        avatar_url: form.avatar_url.unwrap_or_default().trim().to_string(),
+    };
+    let user = User::update_profile(&pool, claims.sub, profile).await?;
+    render(ProfileTemplate {
+        username: user.username,
+        email: user.email,
+        display_name: user.display_name,
+        bio: user.bio,
+        website: user.website,
+        avatar_url: user.avatar_url,
+        saved: Some("Profile saved.".into()),
+        error: None,
+        pw_saved: None,
+        pw_error: None,
+    })
+}
+
+#[derive(Deserialize)]
+struct PasswordForm {
+    current_password: String,
+    new_password: String,
+    confirm_password: String,
+}
+
+async fn change_password(
+    State(pool): State<DbPool>,
+    Extension(claims): Extension<Claims>,
+    Form(form): Form<PasswordForm>,
+) -> Result<Response, AppError> {
+    let user = User::find_by_id(&pool, claims.sub).await?.ok_or(AppError::NotFound)?;
+
+    let profile_data = ProfileTemplate {
+        username: user.username.clone(),
+        email: user.email.clone(),
+        display_name: user.display_name.clone(),
+        bio: user.bio.clone(),
+        website: user.website.clone(),
+        avatar_url: user.avatar_url.clone(),
+        saved: None,
+        error: None,
+        pw_saved: None,
+        pw_error: None,
+    };
+
+    if form.new_password != form.confirm_password {
+        return render(ProfileTemplate { pw_error: Some("Passwords do not match.".into()), ..profile_data });
+    }
+    if form.new_password.len() < 8 {
+        return render(ProfileTemplate { pw_error: Some("Password must be at least 8 characters.".into()), ..profile_data });
+    }
+    if !User::verify_password(&form.current_password, &user.password_hash)
+        .unwrap_or(false)
+    {
+        return render(ProfileTemplate { pw_error: Some("Current password is incorrect.".into()), ..profile_data });
+    }
+
+    User::change_password(&pool, claims.sub, &form.new_password).await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    render(ProfileTemplate { pw_saved: Some("Password changed.".into()), ..profile_data })
 }

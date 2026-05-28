@@ -7,6 +7,40 @@ use axum::{
 
 use crate::auth::validate_token;
 
+// ─── Capability system ────────────────────────────────────────────────────────
+
+static ROLE_CAPS: &[(&str, &[&str])] = &[
+    ("administrator", &[
+        "read", "edit_posts", "delete_posts", "publish_posts",
+        "edit_pages", "delete_pages", "publish_pages",
+        "upload_files", "manage_categories", "manage_tags",
+        "manage_options", "manage_users", "list_users",
+        "edit_others_posts", "delete_others_posts",
+    ]),
+    ("editor", &[
+        "read", "edit_posts", "delete_posts", "publish_posts",
+        "edit_pages", "delete_pages", "publish_pages",
+        "upload_files", "manage_categories", "manage_tags",
+        "edit_others_posts", "delete_others_posts",
+    ]),
+    ("author", &[
+        "read", "edit_posts", "delete_posts", "publish_posts",
+        "upload_files",
+    ]),
+    ("contributor", &[
+        "read", "edit_posts", "delete_posts",
+    ]),
+    ("subscriber", &["read"]),
+];
+
+pub fn has_capability(role: &str, cap: &str) -> bool {
+    ROLE_CAPS
+        .iter()
+        .find(|(r, _)| *r == role)
+        .map(|(_, caps)| caps.contains(&cap))
+        .unwrap_or(false)
+}
+
 pub async fn require_auth(mut req: Request, next: Next) -> Result<Response, StatusCode> {
     let token = extract_token(&req);
 
